@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from ..auth import get_current_user
-from ..db import get_conn
+from ..db import get_conn, dict_cursor
 from ..models import StaffCreate, StaffOut
 
 router = APIRouter(prefix="/staff", tags=["staff"])
@@ -8,7 +8,7 @@ router = APIRouter(prefix="/staff", tags=["staff"])
 
 @router.get("/")
 def list_staff(conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     cursor.execute("SELECT id, full_name, email, role, department, contact, status, shift, avatar_url, bio, consultation_fee FROM users WHERE role != 'Patient'")
     rows = cursor.fetchall() or []
     cursor.close()
@@ -21,7 +21,7 @@ def delete_staff(staff_id: int, conn=Depends(get_conn), user=Depends(get_current
     if role != "Admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
 
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     cursor.execute("SELECT id, full_name, role FROM users WHERE id = %s AND role != 'Patient'", (staff_id,))
     staff = cursor.fetchone()
     if not staff:
@@ -46,7 +46,7 @@ def update_staff_shift(staff_id: int, payload: dict, conn=Depends(get_conn), use
     if new_shift not in ("Morning", "Evening", "Night"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid shift value")
 
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     cursor.execute("UPDATE users SET shift = %s WHERE id = %s AND role != 'Patient'", (new_shift, staff_id))
     if cursor.rowcount == 0:
         cursor.close()

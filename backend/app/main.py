@@ -21,9 +21,10 @@ from .routers import (
     vitals,
 )
 
-# Always load .env from the backend directory regardless of cwd
+# Load .env from backend/ dir first, then fall back to project root
 _env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path=_env_path)
+load_dotenv(dotenv_path=_env_path.parent.parent / ".env", override=False)
 
 app = FastAPI(title=os.getenv("APP_NAME", "MedCore API"))
 
@@ -31,7 +32,7 @@ cors_origins = os.getenv("APP_CORS_ORIGINS", "http://localhost:5173").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[origin.strip() for origin in cors_origins if origin.strip()],
-    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$|^https://.+\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

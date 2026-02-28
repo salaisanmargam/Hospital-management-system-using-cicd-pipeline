@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..auth import create_access_token, get_current_user, hash_password, verify_password
-from ..db import get_conn
+from ..db import get_conn, dict_cursor
 from ..models import Token, UserCreate, UserLogin, UserOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -9,7 +9,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 def register_user(payload: UserCreate, conn=Depends(get_conn)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     cursor.execute("SELECT id FROM users WHERE email = %s", (payload.email,))
     existing = cursor.fetchone()
     if existing:
@@ -21,6 +21,7 @@ def register_user(payload: UserCreate, conn=Depends(get_conn)):
         """
         INSERT INTO users (email, full_name, password_hash, role, avatar_url, department, contact, status, shift, bio, consultation_fee)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
         """,
         (
             payload.email,
@@ -36,7 +37,7 @@ def register_user(payload: UserCreate, conn=Depends(get_conn)):
             payload.consultation_fee,
         ),
     )
-    user_id = cursor.lastrowid
+    user_id = cursor.fetchone()["id"]
 
     # Save to doctor_profiles if role is Doctor
     if payload.role == "Doctor":
@@ -88,7 +89,7 @@ def register_user(payload: UserCreate, conn=Depends(get_conn)):
 @router.post("/login")
 def login_user(payload: UserLogin, conn=Depends(get_conn)):
     try:
-        cursor = conn.cursor(dictionary=True)
+        cursor = dict_cursor(conn)
         cursor.execute("SELECT id, email, full_name, role, password_hash FROM users WHERE email = %s", (payload.email,))
         user = cursor.fetchone()
         cursor.close()

@@ -9,7 +9,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
-from .db import get_conn
+from .db import get_conn, dict_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         logger.error(f"JWT decode error: {exc}")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
 
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     cursor.execute(
         """
         SELECT id, email, full_name, role, avatar_url, department, contact, status, shift, bio, consultation_fee, created_at
@@ -62,4 +62,4 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     cursor.close()
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-    return user
+    return dict(user)

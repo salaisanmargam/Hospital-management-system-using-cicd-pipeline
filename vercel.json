@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "installCommand": "npm install",
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api/index.py" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
+  "env": {
+    "VITE_API_URL": "/api",
+    "VITE_USE_MOCK_AUTH": "false",
+    "APP_NAME": "MedCore API",
+    "APP_CORS_ORIGINS": "https://hospital-management-system-tau-swart.vercel.app",
+    "JWT_ALGORITHM": "HS256",
+    "JWT_EXPIRE_MINUTES": "60",
+    "DB_POOL_SIZE": "5"
+  }
+}

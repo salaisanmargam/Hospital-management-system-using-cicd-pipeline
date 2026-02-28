@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from ..db import get_conn
+from ..db import get_conn, dict_cursor
 from ..auth import get_current_user
 
 router = APIRouter(prefix="/bills", tags=["bills"])
 
 @router.get("/")
 def list_bills(conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     role = user.get("role", "")
 
     base_query = "SELECT b.*, p.full_name as patient_name FROM bills b LEFT JOIN patients p ON b.patient_id = p.id"
@@ -27,13 +27,12 @@ def list_bills(conn=Depends(get_conn), user=Depends(get_current_user)):
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 def create_bill(payload: dict, conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     cursor.execute(
-        "INSERT INTO bills (patient_id, date, amount, status, created_by) VALUES (%s, %s, %s, %s, %s)",
+        "INSERT INTO bills (patient_id, date, amount, status, created_by) VALUES (%s, %s, %s, %s, %s) RETURNING id",
         (payload.get("patient_id"), payload.get("date"), payload.get("amount"), payload.get("status", "Pending"), user["id"]),
     )
-    conn.commit()
-    new_id = cursor.lastrowid
+    new_id = cursor.fetchone()["id"]
 
     # Audit log
     cursor.execute(

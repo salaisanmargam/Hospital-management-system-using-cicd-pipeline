@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from ..db import get_conn
+from ..db import get_conn, dict_cursor
 from ..auth import get_current_user
 
 router = APIRouter(prefix="/lab-tests", tags=["lab-tests"])
 
 @router.get("/")
 def list_lab_tests(conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     role = user.get("role", "")
 
     base_query = "SELECT l.*, p.full_name as patient_name, u.full_name as doctor_name FROM lab_tests l LEFT JOIN patients p ON l.patient_id = p.id LEFT JOIN users u ON l.doctor_id = u.id"
@@ -31,11 +31,12 @@ def list_lab_tests(conn=Depends(get_conn), user=Depends(get_current_user)):
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 def create_lab_test(payload: dict, conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     cursor.execute(
         """
         INSERT INTO lab_tests (patient_id, doctor_id, test_name, department, test_date, priority, status)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
         """,
         (
             payload.get("patient_id"),
@@ -47,8 +48,7 @@ def create_lab_test(payload: dict, conn=Depends(get_conn), user=Depends(get_curr
             payload.get("status", "Pending"),
         ),
     )
-    conn.commit()
-    new_id = cursor.lastrowid
+    new_id = cursor.fetchone()["id"]
     cursor.execute(
         "INSERT INTO audit_logs (action, user_id, user_role, details) VALUES (%s, %s, %s, %s)",
         ("Lab test created", user["id"], user.get("role"), f"Test #{new_id}: {payload.get('test_name')} for patient {payload.get('patient_id')}"),
@@ -60,7 +60,7 @@ def create_lab_test(payload: dict, conn=Depends(get_conn), user=Depends(get_curr
 
 @router.patch("/{test_id}/status")
 def update_test_status(test_id: int, payload: dict, conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     cursor.execute(
         "UPDATE lab_tests SET status = %s WHERE id = %s",
         (payload.get("status"), test_id),

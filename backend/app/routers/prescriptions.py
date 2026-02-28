@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from ..db import get_conn
+from ..db import get_conn, dict_cursor
 from ..auth import get_current_user
 
 router = APIRouter(prefix="/prescriptions", tags=["prescriptions"])
 
 @router.get("/")
 def list_prescriptions(conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     role = user.get("role", "")
 
     base_query = "SELECT pr.*, p.full_name as patient_name, u.full_name as doctor_name FROM prescriptions pr LEFT JOIN patients p ON pr.patient_id = p.id LEFT JOIN users u ON pr.doctor_id = u.id"
@@ -37,7 +37,7 @@ def list_prescriptions(conn=Depends(get_conn), user=Depends(get_current_user)):
 
 @router.patch("/{prescription_id}/status")
 def update_prescription_status(prescription_id: int, payload: dict, conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     new_status = payload.get("status")
     if not new_status:
         raise HTTPException(status_code=400, detail="Status is required")
@@ -56,11 +56,12 @@ def update_prescription_status(prescription_id: int, payload: dict, conn=Depends
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 def create_prescription(payload: dict, conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     cursor.execute(
         """
         INSERT INTO prescriptions (patient_id, doctor_id, date, time, status, priority)
         VALUES (%s, %s, %s, %s, %s, %s)
+        RETURNING id
         """,
         (
             payload.get("patient_id"),
@@ -71,7 +72,7 @@ def create_prescription(payload: dict, conn=Depends(get_conn), user=Depends(get_
             payload.get("priority", "Normal"),
         ),
     )
-    pres_id = cursor.lastrowid
+    pres_id = cursor.fetchone()["id"]
     
     for item in payload.get("items", []):
         cursor.execute(

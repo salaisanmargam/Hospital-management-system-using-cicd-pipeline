@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from ..db import get_conn
+from ..db import get_conn, dict_cursor
 from ..auth import get_current_user
 
 router = APIRouter(prefix="/beds", tags=["beds"])
 
 @router.get("/")
 def list_beds(conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     cursor.execute("SELECT b.*, p.full_name as patient_name FROM beds b LEFT JOIN patients p ON b.patient_id = p.id")
     rows = cursor.fetchall() or []
     cursor.close()
@@ -14,7 +14,7 @@ def list_beds(conn=Depends(get_conn), user=Depends(get_current_user)):
 
 @router.patch("/{bed_id}/status")
 def update_bed_status(bed_id: int, payload: dict, conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     cursor.execute(
         "UPDATE beds SET status = %s, patient_id = %s WHERE id = %s",
         (payload.get("status"), payload.get("patient_id"), bed_id),

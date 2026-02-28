@@ -1,3 +1,5 @@
+# Runtime dependencies for the Vercel Python serverless function.
+# Keep this in sync with backend/requirements.txt.
 fastapi==0.115.6
 uvicorn[standard]==0.32.1
 psycopg2-binary==2.9.10
@@ -5,3 +7,4 @@ python-jose==3.3.0
 passlib[argon2]==1.7.4
 bcrypt==4.1.2
 python-dotenv==1.0.1
+mangum==0.19.0

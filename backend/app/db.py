@@ -1,38 +1,51 @@
 import os
-from typing import Generator
 
-import mysql.connector
-from mysql.connector.pooling import MySQLConnectionPool
+import psycopg2
+import psycopg2.extras
+from psycopg2.extras import RealDictCursor
+from psycopg2.pool import ThreadedConnectionPool
 
-_pool: MySQLConnectionPool | None = None
+_pool: ThreadedConnectionPool | None = None
 
 
 def init_pool() -> None:
+    """Initialise the PostgreSQL connection pool from DATABASE_URL."""
     global _pool
     if _pool is not None:
         return
-    try:
-        _pool = MySQLConnectionPool(
-            pool_name="medcore_pool",
-            pool_size=int(os.getenv("MYSQL_POOL_SIZE", "5")),
-            host=os.getenv("MYSQL_HOST", "localhost"),
-            port=int(os.getenv("MYSQL_PORT", "3306")),
-            user=os.getenv("MYSQL_USER", "root"),
-            password=os.getenv("MYSQL_PASSWORD", ""),
-            database=os.getenv("MYSQL_DATABASE", "medcore_hms"),
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        raise RuntimeError(
+            "DATABASE_URL environment variable is not set. "
+            "Set it to your Neon PostgreSQL connection string."
         )
+    try:
+        _pool = ThreadedConnectionPool(
+            minconn=1,
+            maxconn=int(os.getenv("DB_POOL_SIZE", "5")),
+            dsn=database_url,
+        )
+        print("[MedCore] PostgreSQL connection pool initialised.")
     except Exception as e:
-        print(f"Error initializing MySQL pool: {e}")
-        raise e
+        print(f"[MedCore] Error initialising PostgreSQL pool: {e}")
+        raise
+
+
+def dict_cursor(conn):
+    """Return a cursor whose rows are returned as dicts (RealDictCursor)."""
+    return conn.cursor(cursor_factory=RealDictCursor)
 
 
 def get_conn():
+    """FastAPI dependency – yields a pooled connection and returns it on teardown."""
     if _pool is None:
         init_pool()
     assert _pool is not None
+    conn = _pool.getconn()
     try:
-        conn = _pool.get_connection()
         yield conn
+    except Exception:
+        conn.rollback()
+        raise
     finally:
-        if 'conn' in locals():
-            conn.close()
+        _pool.putconn(conn)

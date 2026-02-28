@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from ..db import get_conn
+from ..db import get_conn, dict_cursor
 from ..auth import get_current_user
 
 router = APIRouter(prefix="/vitals", tags=["vitals"])
@@ -7,7 +7,7 @@ router = APIRouter(prefix="/vitals", tags=["vitals"])
 
 @router.get("/{patient_id}")
 def get_vitals(patient_id: int, conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     cursor.execute(
         "SELECT * FROM vitals WHERE patient_id = %s ORDER BY last_updated DESC LIMIT 1",
         (patient_id,),
@@ -21,7 +21,7 @@ def get_vitals(patient_id: int, conn=Depends(get_conn), user=Depends(get_current
 
 @router.get("/")
 def list_all_vitals(conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     # Get the latest vitals per patient
     cursor.execute(
         """
@@ -40,7 +40,7 @@ def list_all_vitals(conn=Depends(get_conn), user=Depends(get_current_user)):
 @router.post("/", status_code=status.HTTP_201_CREATED)
 def upsert_vitals(payload: dict, conn=Depends(get_conn), user=Depends(get_current_user)):
     """Create or update vitals for a patient."""
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     patient_id = payload.get("patient_id")
     if not patient_id:
         raise HTTPException(status_code=400, detail="patient_id is required")
@@ -52,7 +52,8 @@ def upsert_vitals(payload: dict, conn=Depends(get_conn), user=Depends(get_curren
     if existing:
         cursor.execute(
             """
-            UPDATE vitals SET bp = %s, heart_rate = %s, temperature = %s, spo2 = %s
+            UPDATE vitals SET bp = %s, heart_rate = %s, temperature = %s, spo2 = %s,
+                              last_updated = NOW()
             WHERE id = %s
             """,
             (

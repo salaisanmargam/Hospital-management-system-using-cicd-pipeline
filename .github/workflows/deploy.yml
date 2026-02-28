@@ -1,0 +1,94 @@
+name: Deploy to Vercel
+
+on:
+  push:
+    branches:
+      - main          # production deployment
+      - staging       # preview deployment (optional)
+  workflow_dispatch:  # allow manual triggers from the GitHub UI
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true  # cancel older queued deploys for the same branch
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Gate: run CI first – only deploy if it passes
+  # (remove the `needs` line if you want a standalone deploy job)
+  # ─────────────────────────────────────────────────────────────────────────────
+  ci:
+    name: Run CI checks
+    uses: ./.github/workflows/ci.yml   # re-use the ci workflow
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Deploy
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy (${{ github.ref_name }})
+    runs-on: ubuntu-latest
+    needs: ci
+
+    environment:
+      name: ${{ github.ref_name == 'main' && 'production' || 'preview' }}
+      url: ${{ steps.vercel-deploy.outputs.deploymentUrl }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      # Pull Vercel project metadata (creates .vercel/ directory)
+      - name: Pull Vercel environment info
+        run: |
+          vercel pull --yes \
+            --environment=${{ github.ref_name == 'main' && 'production' || 'preview' }} \
+            --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      # Build – Vercel CLI respects vercel.json build settings
+      - name: Build project artifacts
+        run: |
+          vercel build \
+            ${{ github.ref_name == 'main' && '--prod' || '' }} \
+            --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      # Deploy pre-built artifacts (fast – no rebuild on Vercel servers)
+      - name: Deploy to Vercel
+        id: vercel-deploy
+        run: |
+          URL=$(vercel deploy --prebuilt \
+            ${{ github.ref_name == 'main' && '--prod' || '' }} \
+            --token=${{ secrets.VERCEL_TOKEN }})
+          echo "deploymentUrl=$URL" >> "$GITHUB_OUTPUT"
+          echo "Deployed to: $URL"
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      # Post deployment URL as a PR comment (handy for preview deployments)
+      - name: Comment deployment URL on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🚀 **Preview deployment ready!**\n\n${process.env.DEPLOY_URL}`
+            });
+        env:
+          DEPLOY_URL: ${{ steps.vercel-deploy.outputs.deploymentUrl }}

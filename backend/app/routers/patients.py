@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..auth import get_current_user
-from ..db import get_conn
+from ..db import get_conn, dict_cursor
 from ..models import PatientCreate, PatientOut
 
 router = APIRouter(prefix="/patients", tags=["patients"])
@@ -9,7 +9,7 @@ router = APIRouter(prefix="/patients", tags=["patients"])
 
 @router.get("/")
 def list_patients(conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     role = user.get("role", "")
 
     if role == "Patient":
@@ -26,11 +26,12 @@ def list_patients(conn=Depends(get_conn), user=Depends(get_current_user)):
 
 @router.post("/", response_model=PatientOut, status_code=status.HTTP_201_CREATED)
 def create_patient(payload: PatientCreate, conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     cursor.execute(
         """
         INSERT INTO patients (full_name, age, gender, contact, last_visit, medical_condition, status, blood_type, allergies, created_by)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
         """,
         (
             payload.full_name,
@@ -45,8 +46,7 @@ def create_patient(payload: PatientCreate, conn=Depends(get_conn), user=Depends(
             user["id"],
         ),
     )
-    conn.commit()
-    patient_id = cursor.lastrowid
+    patient_id = cursor.fetchone()["id"]
 
     # Audit log
     cursor.execute(
@@ -63,7 +63,7 @@ def create_patient(payload: PatientCreate, conn=Depends(get_conn), user=Depends(
 
 @router.patch("/{patient_id}/status")
 def update_patient_status(patient_id: int, payload: dict, conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     new_status = payload.get("status")
     if new_status not in ("Inpatient", "Outpatient"):
         raise HTTPException(status_code=400, detail="Invalid status")
@@ -82,18 +82,18 @@ def update_patient_status(patient_id: int, payload: dict, conn=Depends(get_conn)
 
 @router.get("/{patient_id}", response_model=PatientOut)
 def get_patient(patient_id: int, conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     cursor.execute("SELECT * FROM patients WHERE id = %s", (patient_id,))
     patient = cursor.fetchone()
     cursor.close()
     if not patient:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
-    return patient
+    return dict(patient)
 
 
 @router.put("/{patient_id}", response_model=PatientOut)
 def update_patient(patient_id: int, payload: PatientCreate, conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     cursor.execute(
         """
         UPDATE patients

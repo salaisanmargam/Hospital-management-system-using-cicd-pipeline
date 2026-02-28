@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from ..db import get_conn
+from ..db import get_conn, dict_cursor
 from ..auth import get_current_user
 
 router = APIRouter(prefix="/medicines", tags=["medicines"])
@@ -14,11 +14,12 @@ def list_medicines(conn=Depends(get_conn), user=Depends(get_current_user)):
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 def create_medicine(payload: dict, conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     cursor.execute(
         """
         INSERT INTO medicines (name, category, stock, unit, price, expiry_date, status, added_by)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
         """,
         (
             payload.get("name"),
@@ -31,8 +32,7 @@ def create_medicine(payload: dict, conn=Depends(get_conn), user=Depends(get_curr
             user["id"],
         ),
     )
-    conn.commit()
-    new_id = cursor.lastrowid
+    new_id = cursor.fetchone()["id"]
 
     # Audit log
     cursor.execute(

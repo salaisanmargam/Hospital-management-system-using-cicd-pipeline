@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..auth import get_current_user
-from ..db import get_conn
+from ..db import get_conn, dict_cursor
 from ..models import AppointmentCreate, AppointmentOut
 
 router = APIRouter(prefix="/appointments", tags=["appointments"])
@@ -9,7 +9,7 @@ router = APIRouter(prefix="/appointments", tags=["appointments"])
 
 @router.get("/")
 def list_appointments(conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     role = user.get("role", "")
 
     base_query = """
@@ -39,11 +39,12 @@ def list_appointments(conn=Depends(get_conn), user=Depends(get_current_user)):
 
 @router.post("/", response_model=AppointmentOut, status_code=status.HTTP_201_CREATED)
 def create_appointment(payload: AppointmentCreate, conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     cursor.execute(
         """
         INSERT INTO appointments (patient_id, doctor_id, department, appointment_date, appointment_time, status, type)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
         """,
         (
             payload.patient_id,
@@ -55,8 +56,7 @@ def create_appointment(payload: AppointmentCreate, conn=Depends(get_conn), user=
             payload.type,
         ),
     )
-    conn.commit()
-    appointment_id = cursor.lastrowid
+    appointment_id = cursor.fetchone()["id"]
 
     # Audit log
     cursor.execute(
@@ -73,7 +73,7 @@ def create_appointment(payload: AppointmentCreate, conn=Depends(get_conn), user=
 
 @router.patch("/{appointment_id}/status")
 def update_appointment_status(appointment_id: int, payload: dict, conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     new_status = payload.get("status")
     if not new_status:
         raise HTTPException(status_code=400, detail="Status is required")
@@ -92,18 +92,18 @@ def update_appointment_status(appointment_id: int, payload: dict, conn=Depends(g
 
 @router.get("/{appointment_id}", response_model=AppointmentOut)
 def get_appointment(appointment_id: int, conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     cursor.execute("SELECT * FROM appointments WHERE id = %s", (appointment_id,))
     appointment = cursor.fetchone()
     cursor.close()
     if not appointment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appointment not found")
-    return appointment
+    return dict(appointment)
 
 
 @router.put("/{appointment_id}", response_model=AppointmentOut)
 def update_appointment(appointment_id: int, payload: AppointmentCreate, conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     cursor.execute(
         """
         UPDATE appointments

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from ..db import get_conn
+from ..db import get_conn, dict_cursor
 from ..auth import get_current_user
 
 router = APIRouter(prefix="/audit-logs", tags=["audit-logs"])
@@ -10,7 +10,7 @@ def list_logs(conn=Depends(get_conn), user=Depends(get_current_user)):
     if role != "Admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
 
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     cursor.execute("""
         SELECT al.*, u.full_name as user_name
         FROM audit_logs al

@@ -1,0 +1,8 @@
+# Development / testing extras – not needed in production
+-r requirements.txt
+
+pytest==8.3.4
+pytest-asyncio==0.24.0
+httpx==0.28.1           # async test client for FastAPI / Starlette
+anyio[trio]==4.7.0      # async test backend
+psycopg2-binary==2.9.10 # ensure psycopg2 is pinned for tests too
