@@ -13,20 +13,33 @@ concurrency:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
-  # Gate: run CI first – only deploy if it passes
-  # (remove the `needs` line if you want a standalone deploy job)
+  # Gate 1: Secret scan – must pass before anything else
   # ─────────────────────────────────────────────────────────────────────────────
-  ci:
-    name: Run CI checks
-    uses: ./.github/workflows/ci.yml   # re-use the ci workflow
+  secrets:
+    name: Secret scan
+    uses: ./.github/workflows/ci-secret-scan.yml
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Deploy
+  # Gate 2: Frontend CI – type-check + build
+  # ─────────────────────────────────────────────────────────────────────────────
+  ci-frontend:
+    name: Frontend CI
+    uses: ./.github/workflows/ci-frontend.yml
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Gate 3: Backend CI – ruff lint + pytest + env-key check
+  # ─────────────────────────────────────────────────────────────────────────────
+  ci-backend:
+    name: Backend CI
+    uses: ./.github/workflows/ci-backend.yml
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Deploy – only runs when ALL three gates pass
   # ─────────────────────────────────────────────────────────────────────────────
   deploy:
     name: Deploy (${{ github.ref_name }})
     runs-on: ubuntu-latest
-    needs: ci
+    needs: [secrets, ci-frontend, ci-backend]
 
     environment:
       name: ${{ github.ref_name == 'main' && 'production' || 'preview' }}

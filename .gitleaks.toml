@@ -1,0 +1,46 @@
+# .gitleaks.toml
+# Gitleaks configuration – allowlist known-safe patterns so CI doesn't false-positive.
+# Docs: https://github.com/gitleaks/gitleaks#configuration
+
+title = "MedCore HMS – Gitleaks Config"
+
+[extend]
+# Extend the default ruleset (detects 150+ secret types out of the box)
+useDefault = true
+
+# ── Allowlist rules ──────────────────────────────────────────────────────────
+[[rules.allowlist]]
+description = "CI dummy DATABASE_URL (not a real credential)"
+regexes = [
+  "postgresql://test:test@localhost/test_medcore",
+]
+
+[[rules.allowlist]]
+description = "CI JWT test secret (clearly marked non-production)"
+regexes = [
+  "ci-test-secret-key-not-for-production",
+]
+
+[[rules.allowlist]]
+description = "Placeholder values in .env.example"
+paths = [
+  ".env.example",
+]
+
+[[rules.allowlist]]
+description = "Placeholder values in README"
+paths = [
+  "README.md",
+  "backend/README.md",
+]
+
+# ── Global path ignores ───────────────────────────────────────────────────────
+[allowlist]
+paths = [
+  ".git",
+  "node_modules",
+  "dist",
+  ".vercel",
+  "backend/app/__pycache__",
+  "backend/app/routers/__pycache__",
+]

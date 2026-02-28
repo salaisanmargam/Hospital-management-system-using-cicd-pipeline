@@ -1,0 +1,49 @@
+name: CI – Frontend
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  workflow_call: # reusable by deploy.yml
+
+concurrency:
+  group: ci-frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend (type-check & build)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ── Step 1: TypeScript strict type-check ────────────────────
+      - name: TypeScript type-check
+        run: npm run typecheck
+
+      # ── Step 2: Production build (catches bundler/import errors) ─
+      - name: Build (Vite)
+        run: npm run build
+        env:
+          VITE_API_URL: "/api"
+          VITE_USE_MOCK_AUTH: "false"
+
+      # ── Step 3: Upload dist/ so deploy job can reuse it ─────────
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+          retention-days: 3
