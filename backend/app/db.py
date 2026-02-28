@@ -1,7 +1,5 @@
 import os
 
-import psycopg2
-import psycopg2.extras
 from psycopg2.extras import RealDictCursor
 from psycopg2.pool import ThreadedConnectionPool
 

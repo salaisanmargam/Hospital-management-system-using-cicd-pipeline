@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from ..db import get_conn, dict_cursor
 from ..auth import get_current_user
 
@@ -6,7 +6,7 @@ router = APIRouter(prefix="/medicines", tags=["medicines"])
 
 @router.get("/")
 def list_medicines(conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor(dictionary=True)
+    cursor = dict_cursor(conn)
     cursor.execute("SELECT * FROM medicines")
     rows = cursor.fetchall() or []
     cursor.close()

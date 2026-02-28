@@ -1,8 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from ..auth import get_current_user
 from ..db import get_conn, dict_cursor
-from ..models import StaffCreate, StaffOut
-
 router = APIRouter(prefix="/staff", tags=["staff"])
 
 

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from ..db import get_conn, dict_cursor
 from ..auth import get_current_user
 

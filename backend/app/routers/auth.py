@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..auth import create_access_token, get_current_user, hash_password, verify_password
 from ..db import get_conn, dict_cursor
-from ..models import Token, UserCreate, UserLogin, UserOut
+from ..models import UserCreate, UserLogin, UserOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -70,7 +70,7 @@ def register_user(payload: UserCreate, conn=Depends(get_conn)):
     # Audit log
     cursor.execute(
         "INSERT INTO audit_logs (action, user_id, user_role, details) VALUES (%s, %s, %s, %s)",
-        (f"User registered", user_id, payload.role, f"{payload.full_name} ({payload.email}) registered as {payload.role}"),
+        ("User registered", user_id, payload.role, f"{payload.full_name} ({payload.email}) registered as {payload.role}"),
     )
 
     conn.commit()

@@ -32,7 +32,7 @@ def init_db():
         # Split on ; and run each statement, skipping pure-comment chunks
         for statement in schema.split(";"):
             # Strip comment lines, then check if anything remains
-            lines = [l for l in statement.splitlines() if not l.strip().startswith("--")]
+            lines = [line for line in statement.splitlines() if not line.strip().startswith("--")]
             stmt = "\n".join(lines).strip()
             if not stmt:
                 continue
