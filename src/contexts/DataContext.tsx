@@ -128,7 +128,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           ...p,
           id: String(p.id),
           name: p.full_name,
-          medicalCondition: p.medical_condition,
+          condition: p.medical_condition,   // Patient interface uses 'condition'
           lastVisit: p.last_visit,
           bloodType: p.blood_type,
         })));
