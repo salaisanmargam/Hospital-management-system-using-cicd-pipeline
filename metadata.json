@@ -1,0 +1,5 @@
+{
+  "name": "MedCore HMS",
+  "description": "A comprehensive Hospital Management System frontend designed for Flask/MySQL backend integration. Features role-based access (Admin, Doctor, Patient), appointment scheduling, patient records, and financial dashboards.",
+  "requestFramePermissions": []
+}
