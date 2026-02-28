@@ -45,6 +45,12 @@ jobs:
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
+      # uv is required by Vercel's Python runtime builder
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
       # Pull Vercel project metadata (creates .vercel/ directory)
       - name: Pull Vercel environment info
         run: |
