@@ -9,6 +9,8 @@ _env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path=_env_path)
 load_dotenv(dotenv_path=_env_path.parent.parent / ".env", override=False)
 
+from contextlib import asynccontextmanager  # noqa: E402
+
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
@@ -28,7 +30,13 @@ from .routers import (  # noqa: E402
     vitals,
 )
 
-app = FastAPI(title=os.getenv("APP_NAME", "MedCore API"))
+@asynccontextmanager
+async def lifespan(app: FastAPI):  # noqa: ARG001
+    init_pool()
+    yield
+
+
+app = FastAPI(title=os.getenv("APP_NAME", "MedCore API"), lifespan=lifespan)
 
 cors_origins = os.getenv("APP_CORS_ORIGINS", "http://localhost:5173").split(",")
 app.add_middleware(
@@ -39,11 +47,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-def startup_event() -> None:
-    init_pool()
 
 
 app.include_router(health.router)
