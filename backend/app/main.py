@@ -9,11 +9,11 @@ _env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path=_env_path)
 load_dotenv(dotenv_path=_env_path.parent.parent / ".env", override=False)
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
-from .db import init_pool
-from .routers import (
+from .db import init_pool  # noqa: E402
+from .routers import (  # noqa: E402
     appointments,
     auth,
     health,
