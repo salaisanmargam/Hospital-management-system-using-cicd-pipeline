@@ -149,8 +149,10 @@ def seed_db():
         if row:
             inpatient_id = row[0]
             cursor.execute(
-                "UPDATE beds SET patient_id = %s, status = 'Occupied' WHERE ward = 'ICU' AND bed_number = '301' AND patient_id IS NULL",
-                (inpatient_id,),
+                """UPDATE beds SET patient_id = %s, status = 'Occupied'
+                   WHERE ward = 'ICU' AND bed_number = '301'
+                   AND NOT EXISTS (SELECT 1 FROM beds WHERE patient_id = %s)""",
+                (inpatient_id, inpatient_id),
             )
             conn.commit()
 
