@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, Phone, Clock, X, Lock, User as UserIcon, Mail, Loader2, CreditCard, Trash2, Stethoscope, FlaskConical, ShieldPlus, Pill, ClipboardList } from 'lucide-react';
+import ReactDOM from 'react-dom';
+import { Plus, Search, Phone, Clock, X, Lock, User as UserIcon, Mail, Loader2, CreditCard, Trash2, Pencil, Stethoscope, FlaskConical, ShieldPlus, Pill, ClipboardList } from 'lucide-react';
 import { UserRole, Staff as StaffType } from '../types';
-import { registerUser, AUTH_STORAGE_KEY, deleteStaffMember, updateStaffShift } from '../services/api';
+import { registerUser, AUTH_STORAGE_KEY, deleteStaffMember, updateStaffShift, updateStaffMember } from '../services/api';
 import { useData } from '../contexts/DataContext';
 
 /* ── role-specific config ─────────────────────────────────────── */
@@ -72,6 +73,17 @@ export const Staff: React.FC = () => {
   const [shift, setShift] = useState<'Morning' | 'Evening' | 'Night'>('Morning');
   const [bio, setBio] = useState('');
   const [consultationFee, setConsultationFee] = useState('');
+
+  // ── Edit staff state ──
+  const [isEditStaffOpen, setIsEditStaffOpen] = useState(false);
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const [editMessage, setEditMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [editForm, setEditForm] = useState({
+    full_name: '', department: '', contact: '',
+    status: 'Active' as 'Active' | 'On Leave',
+    shift: 'Morning' as 'Morning' | 'Evening' | 'Night',
+    bio: '', consultation_fee: '',
+  });
 
   const meta = ROLE_META[role] || ROLE_META[UserRole.DOCTOR];
 
@@ -182,18 +194,77 @@ export const Staff: React.FC = () => {
     } catch (err: any) { alert('Failed to update shift: ' + (err.message || 'Unknown error')); }
   };
 
+  const openEditStaff = (s: StaffType) => {
+    setEditForm({
+      full_name: s.name,
+      department: s.department || '',
+      contact: s.contact || '',
+      status: (s.status as 'Active' | 'On Leave') || 'Active',
+      shift: (s.shift as 'Morning' | 'Evening' | 'Night') || 'Morning',
+      bio: s.bio || '',
+      consultation_fee: s.consultationFee ? String(s.consultationFee) : '',
+    });
+    setIsEditStaffOpen(true);
+  };
+
+  const handleUpdateStaff = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!viewingStaff) return;
+    setIsEditSubmitting(true);
+    setEditMessage(null);
+    try {
+      const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+      const token = stored ? JSON.parse(stored)?.token : null;
+      if (!token) throw new Error('Not authenticated. Please log in again.');
+
+      const updated = await updateStaffMember(token, viewingStaff.id, {
+        full_name: editForm.full_name,
+        department: editForm.department || null,
+        contact: editForm.contact || null,
+        status: editForm.status,
+        shift: editForm.shift,
+        bio: editForm.bio || null,
+        consultation_fee:
+          viewingStaff.role === 'Doctor' && editForm.consultation_fee
+            ? Number(editForm.consultation_fee)
+            : null,
+      });
+
+      setViewingStaff(prev =>
+        prev ? {
+          ...prev,
+          name: updated.full_name,
+          department: updated.department ?? prev.department,
+          contact: updated.contact ?? prev.contact,
+          status: updated.status ?? prev.status,
+          shift: updated.shift ?? prev.shift,
+          bio: updated.bio ?? undefined,
+          consultationFee: updated.consultation_fee ?? undefined,
+        } : null
+      );
+      setEditMessage({ type: 'success', text: 'Staff updated successfully.' });
+      handleRefresh();
+      setTimeout(() => { setIsEditStaffOpen(false); setEditMessage(null); }, 1800);
+    } catch (err: any) {
+      console.error('[EditStaff] Update failed:', err);
+      setEditMessage({ type: 'error', text: err.message || 'Update failed. Please try again.' });
+    } finally {
+      setIsEditSubmitting(false);
+    }
+  };
+
   const getRoleMeta = (r: string) => ROLE_META[r] || ROLE_META[UserRole.DOCTOR];
 
   /* ── render ───────────────────────────────────────────────── */
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Hospital Staff</h2>
+          <h2 className="text-2xl font-display font-bold text-slate-800">Hospital Staff</h2>
           <p className="text-slate-500">Manage all hospital staff — doctors, nurses, receptionists, lab techs &amp; pharmacists.</p>
         </div>
-        <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 transition shadow-sm">
+        <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 bg-gradient-to-r from-sky-500 to-teal-500 text-white px-5 py-2.5 rounded-xl hover:from-sky-600 hover:to-teal-600 transition-all shadow-lg shadow-sky-500/20 font-semibold text-sm hover:scale-[1.02] active:scale-[0.98]">
           <Plus size={18} />
           <span>Add New Staff</span>
         </button>
@@ -205,11 +276,10 @@ export const Staff: React.FC = () => {
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 rounded-full text-sm font-semibold transition ${
-              activeTab === tab
-                ? 'bg-teal-600 text-white shadow-md'
+            className={`px-4 py-2 rounded-full text-sm font-semibold transition ${activeTab === tab
+                ? 'bg-gradient-to-r from-sky-500 to-teal-500 text-white shadow-lg shadow-sky-500/20'
                 : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-            }`}
+              }`}
           >
             {tab}
             <span className={`ml-1.5 text-xs font-bold ${activeTab === tab ? 'bg-white/20 px-1.5 py-0.5 rounded-full' : 'text-slate-400'}`}>
@@ -220,14 +290,14 @@ export const Staff: React.FC = () => {
       </div>
 
       {/* Staff Grid */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-200 bg-slate-50">
+      <div className="glass-card rounded-2xl overflow-hidden">
+        <div className="p-4 border-b border-slate-200/50 bg-gradient-to-r from-slate-50 to-sky-50/30">
           <div className="relative w-full sm:w-96">
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search staff by name, role or department..."
-              className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-300 transition-all"
             />
           </div>
         </div>
@@ -259,12 +329,12 @@ export const Staff: React.FC = () => {
             filteredStaff.map((s) => {
               const rm = getRoleMeta(s.role);
               return (
-                <div key={s.id} className="border border-slate-200 rounded-xl p-5 hover:shadow-md transition bg-white flex flex-col">
+                <div key={s.id} className="border border-slate-200 rounded-2xl p-5 card-hover bg-white flex flex-col">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-3">
                       <img src={s.avatarUrl} alt={s.name} className="w-12 h-12 rounded-full object-cover border border-slate-100" />
                       <div>
-                        <h3 className="font-bold text-slate-900">{s.name}</h3>
+                        <h3 className="font-display font-bold text-slate-900">{s.name}</h3>
                         <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${rm.color}`}>
                           {rm.icon} {s.role}
                         </span>
@@ -294,10 +364,9 @@ export const Staff: React.FC = () => {
                   </div>
 
                   <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      s.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'
-                    }`}>{s.status}</span>
-                    <button onClick={() => setViewingStaff(s)} className="text-sm font-medium text-teal-600 hover:text-teal-700">View Profile</button>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${s.status === 'Active' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                      }`}>{s.status}</span>
+                    <button onClick={() => setViewingStaff(s)} className="text-sm font-medium text-sky-600 hover:text-sky-700">View Profile</button>
                   </div>
                 </div>
               );
@@ -309,11 +378,12 @@ export const Staff: React.FC = () => {
       {/* ── PROFILE DETAIL MODAL ─────────────────────────────── */}
       {viewingStaff && (() => {
         const vm = getRoleMeta(viewingStaff.role);
-        return (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[60] flex justify-center p-4 overflow-y-auto py-12">
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl h-fit overflow-hidden animate-in zoom-in duration-300">
+        return ReactDOM.createPortal(
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-md z-[60] flex justify-center p-4 overflow-y-auto py-12">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl h-fit overflow-hidden animate-scale-in border border-slate-200/50">
               <div className={`relative h-44 bg-gradient-to-r ${vm.gradient}`}>
                 <div className="absolute top-4 right-4 flex gap-2 z-20">
+                  <button onClick={() => openEditStaff(viewingStaff)} className="p-2 bg-sky-500/80 hover:bg-sky-600 text-white rounded-full transition-colors" title="Edit Staff"><Pencil size={20} /></button>
                   <button onClick={() => handleDeleteStaff(viewingStaff.id)} className="p-2 bg-red-500/80 hover:bg-red-600 text-white rounded-full transition-colors" title="Delete Staff"><Trash2 size={20} /></button>
                   <button onClick={() => setViewingStaff(null)} className="p-2 bg-black/20 hover:bg-black/40 text-white rounded-full transition-colors" title="Close"><X size={20} /></button>
                 </div>
@@ -325,7 +395,7 @@ export const Staff: React.FC = () => {
                 </div>
 
                 <div className="text-center mb-2">
-                  <h3 className="text-2xl font-bold text-slate-900 mb-1">{viewingStaff.name}</h3>
+                  <h3 className="text-2xl font-display font-bold text-slate-900 mb-1">{viewingStaff.name}</h3>
                   <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full ${vm.color}`}>
                     {vm.icon} {viewingStaff.role}
                   </span>
@@ -339,7 +409,7 @@ export const Staff: React.FC = () => {
                   <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Status</p>
                     <p className="font-semibold text-slate-800 flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${viewingStaff.status === 'Active' ? 'bg-green-500' : 'bg-amber-500'}`}></span>
+                      <span className={`w-2 h-2 rounded-full ${viewingStaff.status === 'Active' ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
                       {viewingStaff.status}
                     </p>
                   </div>
@@ -396,17 +466,86 @@ export const Staff: React.FC = () => {
               </div>
             </div>
           </div>
-        );
+        , document.body);
       })()}
 
-      {/* ── REGISTRATION MODAL (role-adaptive) ──────────────── */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-8 overflow-hidden animate-in zoom-in duration-200">
-            {/* Header */}
-            <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
+      {/* ── EDIT STAFF MODAL ──────────────────────────────── */}
+      {isEditStaffOpen && viewingStaff && ReactDOM.createPortal(
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-md z-[70] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg my-8 overflow-hidden animate-scale-in border border-slate-200/50">
+            <div className="bg-gradient-to-r from-sky-600 to-teal-600 p-6 text-white flex justify-between items-center">
               <div>
-                <h3 className="text-xl font-bold">Register New Staff</h3>
+                <h3 className="text-xl font-display font-bold">Edit Staff Member</h3>
+                <p className="text-sky-100 text-sm">{viewingStaff.role} — {viewingStaff.name}</p>
+              </div>
+              <button onClick={() => { setIsEditStaffOpen(false); setEditMessage(null); }} className="text-sky-200 hover:text-white transition"><X size={24} /></button>
+            </div>
+            <form onSubmit={handleUpdateStaff} className="p-6 space-y-4">
+              {editMessage && (
+                <div className={`p-3 rounded-xl text-sm ${ editMessage.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>{editMessage.text}</div>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Full Name</label>
+                  <input type="text" required value={editForm.full_name} onChange={e => setEditForm(f => ({ ...f, full_name: e.target.value }))} className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-teal-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Department</label>
+                  <select value={editForm.department} onChange={e => setEditForm(f => ({ ...f, department: e.target.value }))} className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none bg-white">
+                    {(ROLE_META[viewingStaff.role] || ROLE_META[UserRole.DOCTOR]).departments.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Working Shift</label>
+                  <select value={editForm.shift} onChange={e => setEditForm(f => ({ ...f, shift: e.target.value as any }))} className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none bg-white">
+                    <option value="Morning">Morning</option>
+                    <option value="Evening">Evening</option>
+                    <option value="Night">Night</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Contact</label>
+                  <input type="text" value={editForm.contact} onChange={e => setEditForm(f => ({ ...f, contact: e.target.value }))} className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Status</label>
+                  <select value={editForm.status} onChange={e => setEditForm(f => ({ ...f, status: e.target.value as any }))} className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none bg-white">
+                    <option value="Active">Active</option>
+                    <option value="On Leave">On Leave</option>
+                  </select>
+                </div>
+                {viewingStaff.role === 'Doctor' && (
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-slate-500 mb-1">Consultation Fee (₹)</label>
+                    <input type="number" value={editForm.consultation_fee} onChange={e => setEditForm(f => ({ ...f, consultation_fee: e.target.value }))} className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none" />
+                  </div>
+                )}
+                {(viewingStaff.role === 'Doctor' || viewingStaff.role === 'Nurse' || viewingStaff.role === 'Lab Technician') && (
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-slate-500 mb-1">Bio / Notes</label>
+                    <textarea rows={3} value={editForm.bio} onChange={e => setEditForm(f => ({ ...f, bio: e.target.value }))} className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none resize-none" />
+                  </div>
+                )}
+              </div>
+              <div className="pt-4 border-t border-slate-100 flex gap-3">
+                <button type="button" onClick={() => { setIsEditStaffOpen(false); setEditMessage(null); }} className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-50 transition">Cancel</button>
+                <button type="submit" disabled={isEditSubmitting} className="flex-1 bg-gradient-to-r from-sky-500 to-teal-500 text-white px-4 py-2.5 rounded-xl font-bold hover:from-sky-600 hover:to-teal-600 transition-all disabled:opacity-50">
+                  {isEditSubmitting ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      , document.body)}
+
+      {/* ── REGISTRATION MODAL (role-adaptive) ──────────────── */}
+      {isModalOpen && ReactDOM.createPortal(
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-8 overflow-hidden animate-scale-in border border-slate-200/50">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-slate-900 to-indigo-900 p-6 text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-xl font-display font-bold">Register New Staff</h3>
                 <p className="text-slate-400 text-sm">Choose role and fill in the details below</p>
               </div>
               <button onClick={() => { setIsModalOpen(false); resetForm(); setMessage(null); }} className="text-slate-400 hover:text-white transition"><X size={24} /></button>
@@ -422,11 +561,10 @@ export const Staff: React.FC = () => {
                     <button
                       key={r} type="button"
                       onClick={() => setRole(r)}
-                      className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold border transition ${
-                        role === r
-                          ? 'bg-teal-600 text-white border-teal-600 shadow-md'
-                          : 'bg-white text-slate-600 border-slate-200 hover:border-teal-300 hover:bg-teal-50'
-                      }`}
+                      className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold border transition ${role === r
+                          ? 'bg-gradient-to-r from-sky-500 to-teal-500 text-white border-sky-500 shadow-lg shadow-sky-500/20'
+                          : 'bg-white text-slate-600 border-slate-200 hover:border-sky-300 hover:bg-sky-50'
+                        }`}
                     >
                       {rm.icon} {r}
                     </button>
@@ -437,7 +575,7 @@ export const Staff: React.FC = () => {
 
             <form onSubmit={handleRegister} className="px-8 pb-8 pt-4 space-y-6">
               {message && (
-                <div className={`p-4 rounded-lg text-sm ${message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>{message.text}</div>
+                <div className={`p-4 rounded-xl text-sm ${message.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>{message.text}</div>
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -509,14 +647,14 @@ export const Staff: React.FC = () => {
 
               <div className="pt-6 border-t border-slate-100 flex gap-4">
                 <button type="button" onClick={() => { setIsModalOpen(false); resetForm(); setMessage(null); }} className="flex-1 px-4 py-3 border border-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-50 transition">Cancel</button>
-                <button type="submit" disabled={isSubmitting} className="flex-1 bg-teal-600 text-white px-4 py-3 rounded-xl font-bold hover:bg-teal-700 transition disabled:opacity-50 shadow-md">
+                <button type="submit" disabled={isSubmitting} className="flex-1 bg-gradient-to-r from-sky-500 to-teal-500 text-white px-4 py-3 rounded-xl font-bold hover:from-sky-600 hover:to-teal-600 transition-all disabled:opacity-50 shadow-lg shadow-sky-500/20">
                   {isSubmitting ? 'Registering...' : `Register ${role}`}
                 </button>
               </div>
             </form>
           </div>
         </div>
-      )}
+      , document.body)}
     </div>
   );
 };

@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: medcore-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: medcore-frontend
+  template:
+    metadata:
+      labels:
+        app: medcore-frontend
+    spec:
+      containers:
+      - name: frontend
+        image: medcore-frontend:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: VITE_API_URL
+          value: "http://medcore-backend:8000"
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi

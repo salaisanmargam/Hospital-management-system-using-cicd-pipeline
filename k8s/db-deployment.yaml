@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: medcore-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: medcore-db
+  template:
+    metadata:
+      labels:
+        app: medcore-db
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:16-alpine
+        env:
+        - name: POSTGRES_DB
+          value: medcore_hms
+        - name: POSTGRES_USER
+          value: root
+        - name: POSTGRES_PASSWORD
+          value: your_postgres_password
+        ports:
+        - containerPort: 5432
+        volumeMounts:
+        - name: pgdata
+          mountPath: /var/lib/postgresql/data
+      volumes:
+      - name: pgdata
+        persistentVolumeClaim:
+          claimName: pgdata-pvc

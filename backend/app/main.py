@@ -2,6 +2,13 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+# ── Load .env BEFORE any app imports so module-level constants (e.g.
+#    JWT_EXPIRE_MINUTES in auth.py) pick up the correct values. ──────────────
+_env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=_env_path)
+load_dotenv(dotenv_path=_env_path.parent.parent / ".env", override=False)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -20,11 +27,6 @@ from .routers import (
     audit_logs,
     vitals,
 )
-
-# Load .env from backend/ dir first, then fall back to project root
-_env_path = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(dotenv_path=_env_path)
-load_dotenv(dotenv_path=_env_path.parent.parent / ".env", override=False)
 
 app = FastAPI(title=os.getenv("APP_NAME", "MedCore API"))
 

@@ -93,6 +93,11 @@ def get_patient(patient_id: int, conn=Depends(get_conn), user=Depends(get_curren
 
 @router.put("/{patient_id}", response_model=PatientOut)
 def update_patient(patient_id: int, payload: PatientCreate, conn=Depends(get_conn), user=Depends(get_current_user)):
+    role = user.get("role", "")
+    allowed_roles = {"Admin", "Doctor", "Receptionist"}
+    if role not in allowed_roles:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
     cursor = dict_cursor(conn)
     cursor.execute(
         """
@@ -116,6 +121,11 @@ def update_patient(patient_id: int, payload: PatientCreate, conn=Depends(get_con
     if cursor.rowcount == 0:
         cursor.close()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+
+    cursor.execute(
+        "INSERT INTO audit_logs (action, user_id, user_role, details) VALUES (%s, %s, %s, %s)",
+        ("Patient updated", user["id"], user.get("role"), f"Updated patient #{patient_id}: {payload.full_name}"),
+    )
     conn.commit()
     cursor.execute("SELECT * FROM patients WHERE id = %s", (patient_id,))
     patient = cursor.fetchone()
@@ -125,11 +135,22 @@ def update_patient(patient_id: int, payload: PatientCreate, conn=Depends(get_con
 
 @router.delete("/{patient_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_patient(patient_id: int, conn=Depends(get_conn), user=Depends(get_current_user)):
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM patients WHERE id = %s", (patient_id,))
-    if cursor.rowcount == 0:
+    role = user.get("role", "")
+    if role != "Admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+
+    cursor = dict_cursor(conn)
+    cursor.execute("SELECT id, full_name FROM patients WHERE id = %s", (patient_id,))
+    patient = cursor.fetchone()
+    if not patient:
         cursor.close()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+
+    cursor.execute("DELETE FROM patients WHERE id = %s", (patient_id,))
+    cursor.execute(
+        "INSERT INTO audit_logs (action, user_id, user_role, details) VALUES (%s, %s, %s, %s)",
+        ("Patient deleted", user["id"], user.get("role"), f"Deleted patient #{patient_id}: {patient['full_name']}"),
+    )
     conn.commit()
     cursor.close()
     return None

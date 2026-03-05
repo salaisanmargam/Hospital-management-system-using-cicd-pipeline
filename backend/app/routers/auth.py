@@ -39,24 +39,6 @@ def register_user(payload: UserCreate, conn=Depends(get_conn)):
     )
     user_id = cursor.fetchone()["id"]
 
-    # Save to doctor_profiles if role is Doctor
-    if payload.role == "Doctor":
-        cursor.execute(
-            """
-            INSERT INTO doctor_profiles (user_id, bio, consultation_fee, department, phone_number, shift, status)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                user_id,
-                payload.bio,
-                payload.consultation_fee,
-                payload.department or "General",
-                payload.contact,
-                payload.shift or "Morning",
-                payload.status or "Active",
-            ),
-        )
-
     # Auto-create a patients record when a Patient registers
     if payload.role == "Patient":
         cursor.execute(

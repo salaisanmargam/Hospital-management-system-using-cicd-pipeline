@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Activity, Mail, Lock, User as UserIcon, ArrowRight } from 'lucide-react';
+import { Activity, Mail, Lock, User as UserIcon, ArrowRight, Heart, Shield, Stethoscope, Pill } from 'lucide-react';
 import { User, UserRole } from '../types';
 import { loginWithProfile, registerAndLogin } from '../services/api';
 
@@ -46,126 +46,173 @@ export const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100">
-        <div className="bg-slate-900 p-8 text-center relative overflow-hidden">
-           <div className="absolute top-0 left-0 w-full h-full opacity-10 bg-[url('https://www.transparenttextures.com/patterns/medical-icons.png')]"></div>
-           <div className="relative z-10 flex justify-center mb-4">
-             <div className="bg-teal-500 p-3 rounded-xl shadow-lg">
-                <Activity size={32} className="text-white" />
-             </div>
-           </div>
-           <h2 className="text-2xl font-bold text-white relative z-10">MedCore HMS</h2>
-           <p className="text-slate-400 text-sm mt-1 relative z-10">Hospital Management System</p>
-        </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {/* Gradient orbs */}
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-sky-500/10 rounded-full blur-3xl animate-float"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-teal-500/10 rounded-full blur-3xl animate-float-delayed"></div>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-indigo-500/5 rounded-full blur-3xl"></div>
 
-        <div className="p-8">
-          <div className="flex gap-4 mb-8 bg-slate-100 p-1 rounded-lg">
-            <button 
-              onClick={() => {
-                setIsLogin(true);
-                setError('');
-              }}
-              className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${isLogin ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              Sign In
-            </button>
-            <button 
-              onClick={() => {
-                setIsLogin(false);
-                setError('');
-              }}
-              className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${!isLogin ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              Register
-            </button>
+        {/* Floating medical icons */}
+        <div className="absolute top-[15%] left-[10%] text-white/5 animate-float">
+          <Heart size={48} />
+        </div>
+        <div className="absolute top-[20%] right-[15%] text-white/5 animate-float-delayed">
+          <Shield size={40} />
+        </div>
+        <div className="absolute bottom-[25%] left-[20%] text-white/5 animate-float-delayed">
+          <Stethoscope size={44} />
+        </div>
+        <div className="absolute bottom-[15%] right-[10%] text-white/5 animate-float">
+          <Pill size={36} />
+        </div>
+        <div className="absolute top-[60%] left-[5%] text-white/5 animate-float">
+          <Activity size={32} />
+        </div>
+      </div>
+
+      {/* Auth Card */}
+      <div className="max-w-md w-full animate-scale-in relative z-10">
+        <div className="glass-dark rounded-3xl shadow-2xl shadow-black/30 overflow-hidden border border-white/10">
+          {/* Header */}
+          <div className="px-8 pt-10 pb-8 text-center relative">
+            <div className="flex justify-center mb-5">
+              <div className="relative group">
+                <div className="absolute inset-0 bg-gradient-to-r from-sky-400 to-teal-400 rounded-2xl blur-lg opacity-40 group-hover:opacity-60 transition-opacity animate-pulse-glow"></div>
+                <div className="relative bg-gradient-to-br from-sky-500 to-teal-500 p-4 rounded-2xl shadow-xl shadow-sky-500/20">
+                  <Activity size={32} className="text-white" />
+                </div>
+              </div>
+            </div>
+            <h2 className="text-2xl font-display font-bold text-white">MedCore HMS</h2>
+            <p className="text-slate-400 text-sm mt-1 font-medium">Hospital Management System</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {!isLogin && (
+          <div className="px-8 pb-10">
+            {/* Tab Switcher */}
+            <div className="flex gap-1 mb-8 bg-white/5 p-1 rounded-xl border border-white/5">
+              <button
+                onClick={() => {
+                  setIsLogin(true);
+                  setError('');
+                }}
+                className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 ${isLogin ? 'bg-gradient-to-r from-sky-500 to-teal-500 text-white shadow-lg shadow-sky-500/20' : 'text-slate-400 hover:text-white'}`}
+              >
+                Sign In
+              </button>
+              <button
+                onClick={() => {
+                  setIsLogin(false);
+                  setError('');
+                }}
+                className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 ${!isLogin ? 'bg-gradient-to-r from-sky-500 to-teal-500 text-white shadow-lg shadow-sky-500/20' : 'text-slate-400 hover:text-white'}`}
+              >
+                Register
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {!isLogin && (
+                <div className="animate-fade-in-up">
+                  <label className="block text-xs font-semibold text-slate-400 mb-2 uppercase tracking-wider">Full Name</label>
+                  <div className="relative group">
+                    <UserIcon size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-sky-400 transition-colors" />
+                    <input
+                      type="text"
+                      required={!isLogin}
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full pl-11 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500/50 focus:ring-2 focus:ring-sky-500/20 focus:bg-white/10 transition-all duration-300"
+                      placeholder="John Doe"
+                    />
+                  </div>
+                </div>
+              )}
+
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Full Name</label>
-                <div className="relative">
-                  <UserIcon size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input 
-                    type="text" 
-                    required={!isLogin}
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all"
-                    placeholder="John Doe"
+                <label className="block text-xs font-semibold text-slate-400 mb-2 uppercase tracking-wider">Email Address</label>
+                <div className="relative group">
+                  <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-sky-400 transition-colors" />
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500/50 focus:ring-2 focus:ring-sky-500/20 focus:bg-white/10 transition-all duration-300"
+                    placeholder="name@example.com"
                   />
                 </div>
               </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-2 uppercase tracking-wider">Password</label>
+                <div className="relative group">
+                  <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-sky-400 transition-colors" />
+                  <input
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500/50 focus:ring-2 focus:ring-sky-500/20 focus:bg-white/10 transition-all duration-300"
+                    placeholder="••••••••"
+                  />
+                </div>
+              </div>
+
+              {!isLogin && (
+                <div className="animate-fade-in-up">
+                  <label className="block text-xs font-semibold text-slate-400 mb-2 uppercase tracking-wider">
+                    Register As
+                  </label>
+                  <div className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-slate-300 font-medium">
+                    Patient
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1.5">Staff accounts are created by the hospital administrator.</p>
+                </div>
+              )}
+
+              {error && (
+                <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs text-red-400 animate-fade-in flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-red-400"></div>
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full bg-gradient-to-r from-sky-500 to-teal-500 hover:from-sky-600 hover:to-teal-600 text-white font-semibold py-3 rounded-xl transition-all duration-300 flex items-center justify-center gap-2 mt-6 disabled:opacity-50 disabled:cursor-not-allowed shadow-xl shadow-sky-500/20 hover:shadow-sky-500/30 hover:scale-[1.01] active:scale-[0.99] relative overflow-hidden group"
+              >
+                <span className="relative z-10 flex items-center gap-2">
+                  {isSubmitting ? (
+                    <>
+                      <div className="spinner !w-5 !h-5 !border-2 !border-white/30 !border-t-white"></div>
+                      Please wait...
+                    </>
+                  ) : (
+                    <>
+                      {isLogin ? 'Sign In to Account' : 'Create Account'}
+                      <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                    </>
+                  )}
+                </span>
+              </button>
+            </form>
+
+            {isLogin && (
+              <p className="text-center mt-6 text-xs text-slate-500">
+                Forgot your password? <a href="#" className="text-sky-400 hover:text-sky-300 hover:underline transition-colors">Reset here</a>
+              </p>
             )}
-            
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Email Address</label>
-              <div className="relative">
-                <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input 
-                  type="email" 
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all"
-                  placeholder="name@example.com"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Password</label>
-              <div className="relative">
-                <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input 
-                  type="password" 
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all"
-                  placeholder="••••••••"
-                />
-              </div>
-            </div>
-
-            {/* Role Selection -- only shown during registration (Patient-only self registration) */}
-            {!isLogin && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">
-                Register As
-              </label>
-              <div className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-700 font-medium">
-                Patient
-              </div>
-              <p className="text-[10px] text-slate-400 mt-1">Staff accounts are created by the hospital administrator.</p>
-            </div>
-            )}
-
-            {/* Remove doctor-specific registration fields as they are now handled by admin */}
-
-            {error && (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
-                {error}
-              </div>
-            )}
-
-            <button 
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full bg-teal-600 hover:bg-teal-700 text-white font-medium py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2 mt-6 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {isSubmitting ? 'Please wait...' : (isLogin ? 'Sign In to Account' : 'Create Account')}
-              <ArrowRight size={18} />
-            </button>
-          </form>
-
-          {isLogin && (
-            <p className="text-center mt-6 text-xs text-slate-400">
-              Forgot your password? <a href="#" className="text-teal-600 hover:underline">Reset here</a>
-            </p>
-          )}
+          </div>
         </div>
+
+        {/* Footer */}
+        <p className="text-center mt-6 text-xs text-slate-600">
+          © 2026 MedCore HMS. Secure & HIPAA Compliant.
+        </p>
       </div>
     </div>
   );

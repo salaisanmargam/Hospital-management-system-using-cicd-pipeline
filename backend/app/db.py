@@ -46,4 +46,8 @@ def get_conn():
         conn.rollback()
         raise
     finally:
+        try:
+            conn.rollback()  # discard any uncommitted transaction before returning to pool
+        except Exception:
+            pass
         _pool.putconn(conn)

@@ -133,6 +133,10 @@ const request = async <T>(path: string, options: RequestInit = {}): Promise<T> =
   const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
 
   if (!response.ok) {
+    // Session expired — notify the app so it can log the user out
+    if (response.status === 401) {
+      window.dispatchEvent(new CustomEvent('medcore:unauthorized'));
+    }
     let message = `Request failed (${response.status})`;
     try {
       const data = await response.json();
@@ -243,6 +247,14 @@ export const listStaffMembers = async (token: string): Promise<Staff[]> => {
     console.error('API listStaffMembers failed:', err);
     throw err;
   }
+};
+
+export const updateStaffMember = async (token: string, staffId: string, payload: any): Promise<any> => {
+  return request<any>(`/staff/${staffId}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
 };
 
 export const deleteStaffMember = async (token: string, staffId: string): Promise<void> => {
@@ -424,6 +436,21 @@ export const updatePatientStatus = async (token: string, patientId: string, stat
     method: 'PATCH',
     headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify({ status }),
+  });
+};
+
+export const updatePatient = async (token: string, patientId: string, payload: any): Promise<any> => {
+  return request<any>(`/patients/${patientId}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+};
+
+export const deletePatient = async (token: string, patientId: string): Promise<void> => {
+  await request(`/patients/${patientId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
   });
 };
 

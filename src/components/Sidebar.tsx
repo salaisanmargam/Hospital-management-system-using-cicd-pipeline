@@ -43,40 +43,54 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate, userRo
   );
 
   return (
-    <div className="w-64 bg-slate-900 text-white flex flex-col h-screen fixed left-0 top-0 border-r border-slate-800 z-50">
-      <div className="p-6 flex items-center gap-3 border-b border-slate-800">
-        <div className="bg-teal-500 p-2 rounded-lg">
-          <Activity size={24} className="text-white" />
+    <div className="w-64 bg-gradient-to-b from-slate-950 via-indigo-950 to-slate-950 text-white flex flex-col h-screen fixed left-0 top-0 z-50 noise-overlay overflow-hidden">
+      {/* Brand Area */}
+      <div className="p-6 flex items-center gap-3 border-b border-white/10 relative z-10">
+        <div className="relative group">
+          <div className="absolute inset-0 bg-gradient-to-br from-sky-400 to-teal-400 rounded-xl blur-md opacity-50 group-hover:opacity-75 transition-opacity"></div>
+          <div className="relative bg-gradient-to-br from-sky-500 to-teal-500 p-2.5 rounded-xl shadow-lg shadow-sky-500/20">
+            <Activity size={22} className="text-white" />
+          </div>
         </div>
         <div>
-          <h1 className="text-xl font-bold tracking-tight">MedCore</h1>
-          <p className="text-xs text-slate-400">Hospital System</p>
+          <h1 className="text-lg font-display font-bold tracking-tight bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">MedCore</h1>
+          <p className="text-[10px] text-slate-400 font-medium tracking-wider uppercase">Hospital System</p>
         </div>
       </div>
 
-      <nav className="flex-1 py-6 px-3 space-y-1 overflow-y-auto">
-        {filteredItems.map((item) => (
+      {/* Navigation */}
+      <nav className="flex-1 py-4 px-3 space-y-0.5 overflow-y-auto relative z-10">
+        {filteredItems.map((item, index) => (
           <button
             key={item.id}
             onClick={() => onNavigate(item.id)}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-sm font-medium ${
+            style={{ animationDelay: `${index * 0.04}s` }}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-sm font-medium group relative overflow-hidden animate-fade-in opacity-0 ${
               activePage === item.id 
-                ? 'bg-teal-600 text-white shadow-lg shadow-teal-900/20' 
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                ? 'nav-active text-white shadow-lg shadow-sky-500/5' 
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
             }`}
           >
-            {item.icon}
-            {item.label}
+            <span className={`transition-all duration-200 ${
+              activePage === item.id ? 'text-sky-400 scale-110' : 'group-hover:text-sky-400 group-hover:scale-110'
+            }`}>
+              {item.icon}
+            </span>
+            <span className="relative z-10">{item.label}</span>
+            {activePage === item.id && (
+              <span className="ml-auto w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse-glow shadow-lg shadow-sky-400/50"></span>
+            )}
           </button>
         ))}
       </nav>
 
-      <div className="p-4 border-t border-slate-800">
+      {/* Sign Out */}
+      <div className="p-4 border-t border-white/10 relative z-10">
         <button 
           onClick={onLogout}
-          className="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-slate-800 rounded-lg transition-colors text-sm font-medium"
+          className="w-full flex items-center gap-3 px-4 py-2.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-all duration-200 text-sm font-medium group"
         >
-          <LogOut size={20} />
+          <LogOut size={18} className="group-hover:rotate-[-12deg] transition-transform duration-200" />
           Sign Out
         </button>
       </div>

@@ -61,9 +61,11 @@ interface DataContextType {
   revenueData: any[];
   appointmentStats: any[];
   auditLogs: AuditLog[];
+  isLoading: boolean;
   
   // Actions
   refreshAllData: (token: string) => Promise<void>;
+  refreshPatients: () => Promise<void>;
   refreshStaff: (token: string) => Promise<void>;
   addAppointment: (appt: Appointment) => void;
   updateAppointmentStatus: (id: string, status: Appointment['status']) => void;
@@ -92,23 +94,25 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [revenueData] = useState<any[]>(REVENUE_DATA); // These charts can stay for now or be fetched too
   const [appointmentStats] = useState<any[]>(APPOINTMENT_STATS);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   // --- Actions ---
 
   const refreshAllData = useCallback(async (token: string) => {
+    setIsLoading(true);
     try {
       const [
-        dbStaff, 
-        dbPatients, 
-        dbAppointments, 
-        dbMedicines, 
-        dbBeds, 
-        dbLabTests, 
-        dbPrescriptions, 
-        dbBills, 
-        dbLogs,
-        dbVitals
-      ] = await Promise.all([
+        staffRes,
+        patientsRes,
+        appointmentsRes,
+        medicinesRes,
+        bedsRes,
+        labTestsRes,
+        prescriptionsRes,
+        billsRes,
+        logsRes,
+        vitalsRes,
+      ] = await Promise.allSettled([
         listStaffMembers(token),
         listPatients(token),
         listAppointments(token),
@@ -118,9 +122,30 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         listPrescriptions(token),
         listBills(token),
         listAuditLogs(token),
-        listVitals(token).catch(() => [])
+        listVitals(token),
       ]);
-      
+
+      const dbStaff        = staffRes.status        === 'fulfilled' ? staffRes.value        : null;
+      const dbPatients     = patientsRes.status     === 'fulfilled' ? patientsRes.value     : null;
+      const dbAppointments = appointmentsRes.status === 'fulfilled' ? appointmentsRes.value : null;
+      const dbMedicines    = medicinesRes.status    === 'fulfilled' ? medicinesRes.value    : null;
+      const dbBeds         = bedsRes.status         === 'fulfilled' ? bedsRes.value         : null;
+      const dbLabTests     = labTestsRes.status     === 'fulfilled' ? labTestsRes.value     : null;
+      const dbPrescriptions= prescriptionsRes.status=== 'fulfilled' ? prescriptionsRes.value: null;
+      const dbBills        = billsRes.status        === 'fulfilled' ? billsRes.value        : null;
+      const dbLogs         = logsRes.status         === 'fulfilled' ? logsRes.value         : null;
+      const dbVitals       = vitalsRes.status       === 'fulfilled' ? vitalsRes.value       : null;
+
+      // Log any individual failures for debugging
+      [staffRes, patientsRes, appointmentsRes, medicinesRes, bedsRes,
+       labTestsRes, prescriptionsRes, billsRes, logsRes, vitalsRes
+      ].forEach((r, i) => {
+        if (r.status === 'rejected') {
+          const names = ['staff','patients','appointments','medicines','beds','labTests','prescriptions','bills','logs','vitals'];
+          console.warn(`[MedCore] Failed to load ${names[i]}:`, r.reason);
+        }
+      });
+
       setStaff(dbStaff || []);
       
       if (Array.isArray(dbPatients)) {
@@ -190,8 +215,19 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     } catch (err) {
       console.error('Failed to refresh data:', err);
+    } finally {
+      setIsLoading(false);
     }
   }, []);
+
+  const refreshPatients = useCallback(async () => {
+    const auth = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!auth) return;
+    try {
+      const { token } = JSON.parse(auth);
+      if (token) await refreshAllData(token);
+    } catch {}
+  }, [refreshAllData]);
 
   const refreshStaff = useCallback(async (token: string) => {
     console.log('Refreshing staff with token...');
@@ -405,7 +441,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       revenueData,
       appointmentStats,
       auditLogs,
+      isLoading,
       refreshAllData,
+      refreshPatients,
       refreshStaff,
       addAppointment,
       updateAppointmentStatus,

@@ -14,12 +14,14 @@ import { AdminPanel } from './pages/AdminPanel';
 import { User, UserRole } from './types';
 import { DataProvider, useData } from './contexts/DataContext';
 import { AUTH_STORAGE_KEY, getCurrentUser } from './services/api';
+import { Activity } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activePage, setActivePage] = useState('dashboard');
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [pageKey, setPageKey] = useState(0);
   const { refreshAllData } = useData();
 
   useEffect(() => {
@@ -41,7 +43,6 @@ const AppContent: React.FC = () => {
         .then((currentUser) => {
           setUser(currentUser);
           setIsAuthenticated(true);
-          // Load all data from db immediately after auth
           if (parsed.token) {
             refreshAllData(parsed.token);
           }
@@ -72,10 +73,21 @@ const AppContent: React.FC = () => {
     localStorage.removeItem(AUTH_STORAGE_KEY);
   };
 
+  // Auto-logout when any API call returns 401 (expired token)
+  useEffect(() => {
+    const onUnauthorized = () => handleLogout();
+    window.addEventListener('medcore:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('medcore:unauthorized', onUnauthorized);
+  }, []);
+
+  const handleNavigate = (page: string) => {
+    setActivePage(page);
+    setPageKey(prev => prev + 1);
+  };
+
   const renderContent = () => {
     if (!user) return null;
 
-    // Route-level Access Control
     const accessRules: Record<string, string[]> = {
       'dashboard': ['all'],
       'patients': [UserRole.ADMIN, UserRole.DOCTOR, UserRole.NURSE, UserRole.RECEPTIONIST],
@@ -116,18 +128,30 @@ const AppContent: React.FC = () => {
         return <AdminPanel />;
       default:
         return (
-          <div className="flex flex-col items-center justify-center h-[50vh] text-slate-400">
-            <p className="text-xl font-medium">Module under development</p>
-            <p className="text-sm mt-2">Connecting to Flask API...</p>
+          <div className="flex flex-col items-center justify-center h-[50vh] text-slate-400 animate-fade-in-up">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center mb-4">
+              <Activity size={28} className="text-slate-400" />
+            </div>
+            <p className="text-xl font-display font-semibold text-slate-500">Module under development</p>
+            <p className="text-sm mt-2 text-slate-400">Connecting to Flask API...</p>
           </div>
         );
     }
   };
 
+  // Premium loading screen
   if (!authChecked) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-500">
-        Loading...
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 flex flex-col items-center justify-center">
+        <div className="relative mb-8">
+          <div className="absolute inset-0 bg-gradient-to-r from-sky-500 to-teal-500 rounded-2xl blur-xl opacity-30 animate-pulse-glow"></div>
+          <div className="relative bg-gradient-to-br from-sky-500 to-teal-500 p-4 rounded-2xl shadow-2xl">
+            <Activity size={36} className="text-white" />
+          </div>
+        </div>
+        <h2 className="text-white font-display font-bold text-xl mb-2">MedCore HMS</h2>
+        <p className="text-slate-400 text-sm mb-6">Initializing system...</p>
+        <div className="spinner"></div>
       </div>
     );
   }
@@ -137,19 +161,21 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
-      <Sidebar 
-        activePage={activePage} 
-        onNavigate={setActivePage} 
-        userRole={user.role} 
+    <div className="flex min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
+      <Sidebar
+        activePage={activePage}
+        onNavigate={handleNavigate}
+        userRole={user.role}
         onLogout={handleLogout}
       />
-      
-      <div className="flex-1 ml-64 flex flex-col min-h-screen transition-all duration-300">
+
+      <div className="flex-1 ml-64 flex flex-col min-h-screen">
         <TopBar user={user} />
-        
+
         <main className="flex-1 p-8 overflow-y-auto">
-          {renderContent()}
+          <div key={pageKey} className="animate-fade-in-up">
+            {renderContent()}
+          </div>
         </main>
       </div>
     </div>
