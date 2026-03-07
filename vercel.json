@@ -13,6 +13,11 @@
       "VITE_USE_MOCK_AUTH": "false"
     }
   },
+  "functions": {
+    "api/index.py": {
+      "runtime": "python3.12"
+    }
+  },
   "env": {
     "VITE_API_URL": "/api",
     "VITE_USE_MOCK_AUTH": "false",

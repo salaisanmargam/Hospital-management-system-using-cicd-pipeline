@@ -1,9 +1,10 @@
 import os
+from typing import Optional
 
 from psycopg2.extras import RealDictCursor
 from psycopg2.pool import ThreadedConnectionPool
 
-_pool: ThreadedConnectionPool | None = None
+_pool: Optional[ThreadedConnectionPool] = None
 
 
 def init_pool() -> None:
