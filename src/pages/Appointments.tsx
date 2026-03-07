@@ -13,6 +13,8 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [selectedDept, setSelectedDept] = useState('');
   const [selectedDoctor, setSelectedDoctor] = useState('');
+  const [selectedSlot, setSelectedSlot] = useState('');
+  const [selectedDate, setSelectedDate] = useState('');
   const [appointmentPriority, setAppointmentPriority] = useState<'Normal' | 'Emergency'>('Normal');
   const [step, setStep] = useState(1);
 
@@ -43,8 +45,7 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
   };
 
   const handleCreateAppointment = () => {
-    // Basic validation
-    if (!selectedDoctor || !selectedDept) return;
+    if (!selectedDoctor || !selectedDept || !selectedSlot || !selectedDate) return;
 
     const newAppt: Appointment = {
       id: `a${Date.now()}`,
@@ -53,8 +54,8 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
       doctorId: staff.find(s => s.name === selectedDoctor)?.id || 'unknown_doc',
       doctorName: selectedDoctor,
       department: selectedDept,
-      date: new Date().toISOString().split('T')[0],
-      time: '09:00 AM', // In real app, select time
+      date: selectedDate,
+      time: selectedSlot,
       status: appointmentPriority === 'Emergency' ? AppointmentStatus.EMERGENCY : AppointmentStatus.SCHEDULED,
       type: appointmentPriority === 'Emergency' ? 'Consultation' : 'General Checkup'
     };
@@ -63,8 +64,15 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
     handleBookingClose();
   };
 
-  // Mock slots generation
-  const availableSlots = ['09:00 AM', '10:30 AM', '02:00 PM', '04:15 PM'];
+  // Shift-based slot definitions
+  const SHIFT_SLOTS: Record<string, string[]> = {
+    Morning: ['08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM', '12:00 PM'],
+    Evening: ['02:00 PM', '03:00 PM', '04:00 PM', '05:00 PM', '06:00 PM'],
+    Night:   ['07:00 PM', '08:00 PM', '09:00 PM', '10:00 PM'],
+  };
+  const selectedDoctorStaff = staff.find(s => s.name === selectedDoctor);
+  const doctorShift = selectedDoctorStaff?.shift || 'Morning';
+  const availableSlots = SHIFT_SLOTS[doctorShift] ?? SHIFT_SLOTS.Morning;
 
   const getStatusColor = (status: AppointmentStatus) => {
     switch (status) {
@@ -89,6 +97,8 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
     setStep(1);
     setSelectedDept('');
     setSelectedDoctor('');
+    setSelectedSlot('');
+    setSelectedDate('');
     setAppointmentPriority('Normal');
   }
 
@@ -360,6 +370,15 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
                   {getStatusIcon(apt.status)}
                   {apt.status}
                 </span>
+                {isPatient && apt.status === AppointmentStatus.SCHEDULED && (
+                  <button
+                    onClick={() => updateAppointmentStatus(apt.id, AppointmentStatus.CANCELLED)}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition"
+                  >
+                    <XCircle size={14} />
+                    Cancel
+                  </button>
+                )}
                 {!isPatient && (
                   <button className="text-slate-400 hover:text-slate-600">
                     <MoreVertical size={20} />
@@ -514,7 +533,7 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
                       staff.filter(s => s.role === UserRole.DOCTOR && (selectedDept === 'General Medicine' || s.department === selectedDept)).map(doc => (
                         <button
                           key={doc.id}
-                          onClick={() => { setSelectedDoctor(doc.name); setStep(3); }}
+                          onClick={() => { setSelectedDoctor(doc.name); setSelectedSlot(''); setStep(3); }}
                           className="w-full flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:border-teal-500 hover:bg-teal-50 transition"
                         >
                           <div className="flex items-center gap-3">
@@ -522,7 +541,7 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
                             <div className="text-left">
                               <p className="font-medium text-slate-900">{doc.name}</p>
                               <p className="text-xs text-slate-500">
-                                {appointmentPriority === 'Emergency' ? 'Available Immediately' : 'Next Slot: Today 2:00 PM'}
+                                {appointmentPriority === 'Emergency' ? 'Available Immediately' : `${doc.shift} shift`}
                               </p>
                             </div>
                           </div>
@@ -550,23 +569,52 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
                       <p className={`text-xs ${appointmentPriority === 'Emergency' ? 'text-red-600' : 'text-teal-600'}`}>
                         {selectedDept} • {appointmentPriority}
                       </p>
+                      <span className={`inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-full ${
+                        doctorShift === 'Morning' ? 'bg-amber-100 text-amber-700' :
+                        doctorShift === 'Evening' ? 'bg-orange-100 text-orange-700' :
+                        'bg-indigo-100 text-indigo-700'
+                      }`}>
+                        {doctorShift === 'Morning' ? '🌅' : doctorShift === 'Evening' ? '🌆' : '🌙'} {doctorShift} Shift
+                      </span>
                     </div>
                     {appointmentPriority === 'Emergency' && <Siren className="text-red-500" />}
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">Select Date</label>
-                    <input type="date" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:border-teal-500" />
+                    <input
+                      type="date"
+                      value={selectedDate}
+                      min={new Date().toISOString().split('T')[0]}
+                      onChange={e => setSelectedDate(e.target.value)}
+                      className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:border-teal-500"
+                    />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Available Slots</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Available Slots
+                      <span className={`ml-2 text-xs font-semibold px-2 py-0.5 rounded-full ${
+                        doctorShift === 'Morning' ? 'bg-amber-100 text-amber-700' :
+                        doctorShift === 'Evening' ? 'bg-orange-100 text-orange-700' :
+                        'bg-indigo-100 text-indigo-700'
+                      }`}>
+                        {doctorShift === 'Morning' ? '🌅' : doctorShift === 'Evening' ? '🌆' : '🌙'} {doctorShift} Shift
+                      </span>
+                    </label>
                     <div className="grid grid-cols-3 gap-2">
                       {availableSlots.map(slot => (
-                        <button key={slot} className={`px-3 py-2 border rounded-md text-sm transition ${appointmentPriority === 'Emergency'
-                            ? 'border-red-200 text-red-700 hover:bg-red-600 hover:text-white'
-                            : 'border-slate-200 text-slate-600 hover:bg-teal-600 hover:text-white'
-                          }`}>
+                        <button
+                          key={slot}
+                          onClick={() => setSelectedSlot(slot)}
+                          className={`px-3 py-2 border rounded-md text-sm font-medium transition ${
+                            selectedSlot === slot
+                              ? (appointmentPriority === 'Emergency' ? 'bg-red-600 text-white border-red-600' : 'bg-teal-600 text-white border-teal-600')
+                              : (appointmentPriority === 'Emergency'
+                                  ? 'border-red-200 text-red-700 hover:bg-red-600 hover:text-white'
+                                  : 'border-slate-200 text-slate-600 hover:bg-teal-600 hover:text-white')
+                          }`}
+                        >
                           {slot}
                         </button>
                       ))}
@@ -575,8 +623,12 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
 
                   <button
                     onClick={handleCreateAppointment}
-                    className={`w-full text-white font-medium py-3 rounded-lg transition mt-4 ${appointmentPriority === 'Emergency' ? 'bg-red-600 hover:bg-red-700' : 'bg-teal-600 hover:bg-teal-700'
-                      }`}
+                    disabled={!selectedSlot || !selectedDate}
+                    className={`w-full text-white font-medium py-3 rounded-lg transition mt-4 ${
+                      !selectedSlot || !selectedDate
+                        ? 'bg-slate-300 cursor-not-allowed'
+                        : appointmentPriority === 'Emergency' ? 'bg-red-600 hover:bg-red-700' : 'bg-teal-600 hover:bg-teal-700'
+                    }`}
                   >
                     Confirm Appointment
                   </button>
