@@ -68,6 +68,9 @@ except Exception as _err:
     async def _err_handler(path: str):
         return _PR(_startup_error, status_code=500)
 
+    app = _StripApiPrefix(_fb, "/api")
+    handler = _Mangum(_fb, lifespan="off")
+
     # Also expose at root for direct checks
     @_fb.api_route("/", methods=["GET", "POST"])
     async def _err_root():
