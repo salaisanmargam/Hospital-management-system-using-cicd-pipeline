@@ -1,0 +1,81 @@
+name: Docker – Build & Scan
+
+# Builds both images and scans them with Trivy.
+# CRITICAL CVEs with available fixes will fail the job.
+# Results are uploaded to the GitHub Security tab (SARIF).
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+concurrency:
+  group: docker-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-scan:
+    name: Build & scan (${{ matrix.name }})
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      security-events: write   # required to upload SARIF to GitHub Security tab
+
+    strategy:
+      fail-fast: false          # scan both images even if one fails
+      matrix:
+        include:
+          - name: backend
+            dockerfile: Dockerfile.backend
+            image: medcore-backend
+            build-args: ""
+
+          - name: frontend
+            dockerfile: Dockerfile.frontend
+            image: medcore-frontend
+            build-args: "--build-arg VITE_API_URL=/api"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── Build image ────────────────────────────────────────────────────────
+      - name: Build ${{ matrix.name }} image
+        run: |
+          docker build \
+            -f ${{ matrix.dockerfile }} \
+            ${{ matrix.build-args }} \
+            -t ${{ matrix.image }}:ci \
+            .
+
+      # ── Trivy scan → SARIF (appears in GitHub Security → Code scanning) ───
+      - name: Scan ${{ matrix.name }} with Trivy (SARIF)
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          image-ref: ${{ matrix.image }}:ci
+          format: sarif
+          output: trivy-${{ matrix.name }}.sarif
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true   # skip CVEs with no fix available yet
+
+      - name: Upload ${{ matrix.name }} SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()             # upload even if the build step failed
+        with:
+          sarif_file: trivy-${{ matrix.name }}.sarif
+          category: trivy-${{ matrix.name }}
+
+      # ── Trivy scan → table (human-readable summary in job log) ────────────
+      # exit-code 1 = fail CI if any CRITICAL with a fix is found
+      - name: Scan ${{ matrix.name }} with Trivy (table summary)
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          image-ref: ${{ matrix.image }}:ci
+          format: table
+          vuln-type: os,library
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"         # block PR/merge on fixable CRITICAL vulnerabilities
