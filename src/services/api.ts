@@ -50,6 +50,9 @@ const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http:/
 const USE_MOCK_AUTH = (import.meta.env.VITE_USE_MOCK_AUTH as string | undefined) === 'true';
 const MOCK_USERS_KEY = 'medcore_mock_users';
 
+/** Returns the Authorization header object for authenticated requests. */
+const authHeaders = (token: string): HeadersInit => ({ Authorization: `Bearer ${token}` });
+
 const normalizeRole = (role: string): UserRole => {
   const roles = Object.values(UserRole) as string[];
   return roles.includes(role) ? (role as UserRole) : UserRole.PATIENT;
@@ -233,257 +236,108 @@ export const registerAndLogin = async (payload: RegisterPayload): Promise<AuthRe
   return loginWithProfile({ email: payload.email, password: payload.password });
 };
 
+// ─── Staff ───────────────────────────────────────────────────────────────────
+
 export const listStaffMembers = async (token: string): Promise<Staff[]> => {
-  try {
-    const staffList = await request<ApiUser[]>('/staff/', {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    console.log('API fetched staff list:', staffList);
-    return staffList.map(toStaff);
-  } catch (err) {
-    console.error('API listStaffMembers failed:', err);
-    throw err;
-  }
+  const staffList = await request<ApiUser[]>('/staff/', { method: 'GET', headers: authHeaders(token) });
+  return staffList.map(toStaff);
 };
 
-export const updateStaffMember = async (token: string, staffId: string, payload: any): Promise<any> => {
-  return request<any>(`/staff/${staffId}`, {
-    method: 'PUT',
-    headers: { Authorization: `Bearer ${token}` },
-    body: JSON.stringify(payload),
-  });
-};
+export const updateStaffMember = async (token: string, staffId: string, payload: any): Promise<any> =>
+  request<any>(`/staff/${staffId}`, { method: 'PUT', headers: authHeaders(token), body: JSON.stringify(payload) });
 
 export const deleteStaffMember = async (token: string, staffId: string): Promise<void> => {
-  await request(`/staff/${staffId}`, {
-    method: 'DELETE',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  await request(`/staff/${staffId}`, { method: 'DELETE', headers: authHeaders(token) });
 };
 
 export const updateStaffShift = async (token: string, staffId: string, shift: string): Promise<void> => {
-  await request(`/staff/${staffId}/shift`, {
-    method: 'PATCH',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ shift }),
-  });
+  await request(`/staff/${staffId}/shift`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ shift }) });
 };
 
-// --- Patients ---
+// ─── Patients ─────────────────────────────────────────────────────────────────
 
-export const listPatients = async (token: string): Promise<any[]> => {
-  return request<any[]>('/patients/', {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-};
+export const listPatients = async (token: string): Promise<any[]> =>
+  request<any[]>('/patients/', { method: 'GET', headers: authHeaders(token) });
 
-export const createPatient = async (token: string, payload: any): Promise<any> => {
-  return request<any>('/patients/', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-  });
-};
+export const createPatient = async (token: string, payload: any): Promise<any> =>
+  request<any>('/patients/', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
 
-// --- Appointments ---
+export const updatePatient = async (token: string, patientId: string, payload: any): Promise<any> =>
+  request<any>(`/patients/${patientId}`, { method: 'PUT', headers: authHeaders(token), body: JSON.stringify(payload) });
 
-export const listAppointments = async (token: string): Promise<any[]> => {
-  return request<any[]>('/appointments/', {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-};
-
-export const createAppointment = async (token: string, payload: any): Promise<any> => {
-  return request<any>('/appointments/', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-  });
-};
-
-// --- Medicines ---
-export const listMedicines = async (token: string): Promise<any[]> => {
-  return request<any[]>('/medicines/', {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-};
-
-// --- Beds ---
-export const listBeds = async (token: string): Promise<any[]> => {
-  return request<any[]>('/beds/', {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-};
-
-// --- Lab Tests ---
-export const listLabTests = async (token: string): Promise<any[]> => {
-  return request<any[]>('/lab-tests/', {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-};
-
-// --- Prescriptions ---
-export const listPrescriptions = async (token: string): Promise<any[]> => {
-  return request<any[]>('/prescriptions/', {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-};
-
-// --- Bills ---
-export const listBills = async (token: string): Promise<any[]> => {
-  return request<any[]>('/bills/', {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-};
-
-// --- Audit Logs ---
-export const listAuditLogs = async (token: string): Promise<any[]> => {
-  return request<any[]>('/audit-logs/', {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-};
-
-// --- Appointment Mutations ---
-export const updateAppointmentStatus = async (token: string, appointmentId: string, status: string): Promise<any> => {
-  return request<any>(`/appointments/${appointmentId}/status`, {
-    method: 'PATCH',
-    headers: { Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ status }),
-  });
-};
-
-// --- Prescription Mutations ---
-export const createPrescription = async (token: string, payload: any): Promise<any> => {
-  return request<any>('/prescriptions/', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: JSON.stringify(payload),
-  });
-};
-
-export const updatePrescriptionStatus = async (token: string, prescriptionId: string, status: string): Promise<any> => {
-  return request<any>(`/prescriptions/${prescriptionId}/status`, {
-    method: 'PATCH',
-    headers: { Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ status }),
-  });
-};
-
-// --- Lab Test Mutations ---
-export const createLabTest = async (token: string, payload: any): Promise<any> => {
-  return request<any>('/lab-tests/', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: JSON.stringify(payload),
-  });
-};
-
-export const updateLabTestStatus = async (token: string, testId: string, status: string): Promise<any> => {
-  return request<any>(`/lab-tests/${testId}/status`, {
-    method: 'PATCH',
-    headers: { Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ status }),
-  });
-};
-
-// --- Bed Mutations ---
-export const updateBedStatus = async (token: string, bedId: string, status: string, patientId?: string): Promise<any> => {
-  return request<any>(`/beds/${bedId}/status`, {
-    method: 'PATCH',
-    headers: { Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ status, patient_id: patientId || null }),
-  });
-};
-
-// --- Patient Status ---
-export const updatePatientStatus = async (token: string, patientId: string, status: string): Promise<any> => {
-  return request<any>(`/patients/${patientId}/status`, {
-    method: 'PATCH',
-    headers: { Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ status }),
-  });
-};
-
-export const updatePatient = async (token: string, patientId: string, payload: any): Promise<any> => {
-  return request<any>(`/patients/${patientId}`, {
-    method: 'PUT',
-    headers: { Authorization: `Bearer ${token}` },
-    body: JSON.stringify(payload),
-  });
-};
+export const updatePatientStatus = async (token: string, patientId: string, status: string): Promise<any> =>
+  request<any>(`/patients/${patientId}/status`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ status }) });
 
 export const deletePatient = async (token: string, patientId: string): Promise<void> => {
-  await request(`/patients/${patientId}`, {
-    method: 'DELETE',
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  await request(`/patients/${patientId}`, { method: 'DELETE', headers: authHeaders(token) });
 };
 
-// --- Vitals ---
-export const upsertVitals = async (token: string, payload: any): Promise<any> => {
-  return request<any>('/vitals/', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: JSON.stringify(payload),
-  });
-};
+// ─── Appointments ─────────────────────────────────────────────────────────────
 
-export const listVitals = async (token: string): Promise<any[]> => {
-  return request<any[]>('/vitals/', {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${token}` },
-  });
-};
+export const listAppointments = async (token: string): Promise<any[]> =>
+  request<any[]>('/appointments/', { method: 'GET', headers: authHeaders(token) });
 
-// --- Medicine Mutations ---
-export const createMedicine = async (token: string, payload: any): Promise<any> => {
-  return request<any>('/medicines/', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: JSON.stringify(payload),
-  });
-};
+export const createAppointment = async (token: string, payload: any): Promise<any> =>
+  request<any>('/appointments/', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
 
-// --- Bill Mutations ---
-export const createBill = async (token: string, payload: any): Promise<any> => {
-  return request<any>('/bills/', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: JSON.stringify(payload),
-  });
-};
+export const updateAppointmentStatus = async (token: string, appointmentId: string, status: string): Promise<any> =>
+  request<any>(`/appointments/${appointmentId}/status`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ status }) });
+
+// ─── Medicines ────────────────────────────────────────────────────────────────
+
+export const listMedicines = async (token: string): Promise<any[]> =>
+  request<any[]>('/medicines/', { method: 'GET', headers: authHeaders(token) });
+
+export const createMedicine = async (token: string, payload: any): Promise<any> =>
+  request<any>('/medicines/', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
+
+// ─── Beds ─────────────────────────────────────────────────────────────────────
+
+export const listBeds = async (token: string): Promise<any[]> =>
+  request<any[]>('/beds/', { method: 'GET', headers: authHeaders(token) });
+
+export const updateBedStatus = async (token: string, bedId: string, status: string, patientId?: string): Promise<any> =>
+  request<any>(`/beds/${bedId}/status`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ status, patient_id: patientId || null }) });
+
+// ─── Lab Tests ────────────────────────────────────────────────────────────────
+
+export const listLabTests = async (token: string): Promise<any[]> =>
+  request<any[]>('/lab-tests/', { method: 'GET', headers: authHeaders(token) });
+
+export const createLabTest = async (token: string, payload: any): Promise<any> =>
+  request<any>('/lab-tests/', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
+
+export const updateLabTestStatus = async (token: string, testId: string, status: string): Promise<any> =>
+  request<any>(`/lab-tests/${testId}/status`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ status }) });
+
+// ─── Prescriptions ────────────────────────────────────────────────────────────
+
+export const listPrescriptions = async (token: string): Promise<any[]> =>
+  request<any[]>('/prescriptions/', { method: 'GET', headers: authHeaders(token) });
+
+export const createPrescription = async (token: string, payload: any): Promise<any> =>
+  request<any>('/prescriptions/', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
+
+export const updatePrescriptionStatus = async (token: string, prescriptionId: string, status: string): Promise<any> =>
+  request<any>(`/prescriptions/${prescriptionId}/status`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ status }) });
+
+// ─── Bills ────────────────────────────────────────────────────────────────────
+
+export const listBills = async (token: string): Promise<any[]> =>
+  request<any[]>('/bills/', { method: 'GET', headers: authHeaders(token) });
+
+export const createBill = async (token: string, payload: any): Promise<any> =>
+  request<any>('/bills/', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
+
+// ─── Vitals ───────────────────────────────────────────────────────────────────
+
+export const listVitals = async (token: string): Promise<any[]> =>
+  request<any[]>('/vitals/', { method: 'GET', headers: authHeaders(token) });
+
+export const upsertVitals = async (token: string, payload: any): Promise<any> =>
+  request<any>('/vitals/', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
+
+// ─── Audit Logs ───────────────────────────────────────────────────────────────
+
+export const listAuditLogs = async (token: string): Promise<any[]> =>
+  request<any[]>('/audit-logs/', { method: 'GET', headers: authHeaders(token) });

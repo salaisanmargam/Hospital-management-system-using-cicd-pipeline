@@ -3,11 +3,13 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# ── Load .env BEFORE any app imports so module-level constants (e.g.
-#    JWT_EXPIRE_MINUTES in auth.py) pick up the correct values. ──────────────
-_env_path = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(dotenv_path=_env_path)
-load_dotenv(dotenv_path=_env_path.parent.parent / ".env", override=False)
+# ── Load .env before any app imports so module-level constants
+#    (e.g. JWT_EXPIRE_MINUTES in auth.py) pick up the correct values.
+#    The project-root .env is used for local development.
+#    In production (Vercel) no .env file exists and this is a no-op —
+#    env vars are injected by the platform.
+_project_root = Path(__file__).resolve().parent.parent.parent  # medcore/
+load_dotenv(dotenv_path=_project_root / ".env")
 
 from contextlib import asynccontextmanager  # noqa: E402
 
