@@ -50,32 +50,39 @@ jobs:
             -t ${{ matrix.image }}:ci \
             .
 
+      # ── Install Trivy directly (avoids aquasecurity/trivy-action GitHub
+      #    API rate-limit bug where the action tries to resolve its own version)
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin v0.60.0
+
       # ── Trivy scan → SARIF (appears in GitHub Security → Code scanning) ───
       - name: Scan ${{ matrix.name }} with Trivy (SARIF)
-        uses: aquasecurity/trivy-action@0.30.0
-        with:
-          image-ref: ${{ matrix.image }}:ci
-          format: sarif
-          output: trivy-${{ matrix.name }}.sarif
-          vuln-type: os,library
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true   # skip CVEs with no fix available yet
+        run: |
+          trivy image \
+            --format sarif \
+            --output trivy-${{ matrix.name }}.sarif \
+            --vuln-type os,library \
+            --severity CRITICAL,HIGH \
+            --ignore-unfixed \
+            ${{ matrix.image }}:ci
 
       - name: Upload ${{ matrix.name }} SARIF to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()             # upload even if the build step failed
+        uses: github/codeql-action/upload-sarif@v4
+        if: always() && hashFiles(format('trivy-{0}.sarif', matrix.name)) != ''
         with:
           sarif_file: trivy-${{ matrix.name }}.sarif
           category: trivy-${{ matrix.name }}
 
       # ── Trivy scan → table (human-readable summary in job log) ────────────
       # exit-code 1 = fail CI if any CRITICAL with a fix is found
-      - name: Scan ${{ matrix.name }} with Trivy (table summary)
-        uses: aquasecurity/trivy-action@0.30.0
-        with:
-          image-ref: ${{ matrix.image }}:ci
-          format: table
-          vuln-type: os,library
-          severity: CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"         # block PR/merge on fixable CRITICAL vulnerabilities
+      - name: Scan ${{ matrix.name }} with Trivy (table – fail on fixable CRITICAL)
+        run: |
+          trivy image \
+            --format table \
+            --vuln-type os,library \
+            --severity CRITICAL \
+            --ignore-unfixed \
+            --exit-code 1 \
+            ${{ matrix.image }}:ci
