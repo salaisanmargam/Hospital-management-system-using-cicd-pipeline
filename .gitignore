@@ -27,6 +27,9 @@ dist-ssr
 .env
 .env.*
 !.env.example
+# Allow non-secret production/development Vite overrides to be committed
+!.env.production
+!.env.development
 
 # Vercel
 .vercel
