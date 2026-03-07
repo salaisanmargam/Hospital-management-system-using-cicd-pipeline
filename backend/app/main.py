@@ -32,7 +32,11 @@ from .routers import (  # noqa: E402
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ARG001
-    init_pool()
+    try:
+        init_pool()
+    except Exception as exc:  # pragma: no cover
+        # Non-fatal: the pool will be lazily created on the first request.
+        print(f"[MedCore] DB pool init failed at startup (non-fatal): {exc}")
     yield
 
 

@@ -32,7 +32,18 @@ class _StripApiPrefix:
                 scope = dict(scope)
                 scope["path"] = path[len(self._prefix):] or "/"
                 scope["raw_path"] = scope["path"].encode()
-        await self._app(scope, receive, send)
+        try:
+            await self._app(scope, receive, send)
+        except Exception as exc:
+            if scope.get("type") == "http":
+                import json as _json
+                body = _json.dumps({"detail": str(exc)}).encode()
+                await send({"type": "http.response.start", "status": 500,
+                            "headers": [[b"content-type", b"application/json"],
+                                        [b"content-length", str(len(body)).encode()]]})
+                await send({"type": "http.response.body", "body": body})
+            else:
+                raise
 
 
 try:
