@@ -27,6 +27,8 @@
     "APP_CORS_ORIGINS": "https://medcore-xi.vercel.app",
     "JWT_ALGORITHM": "HS256",
     "JWT_EXPIRE_MINUTES": "480",
-    "DB_POOL_SIZE": "5"
+    "DB_POOL_SIZE": "5",
+    "VITE_API_URL": "/api",
+    "VITE_USE_MOCK_AUTH": "false"
   }
 }
