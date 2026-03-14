@@ -21,7 +21,10 @@ spec:
         - name: POSTGRES_USER
           value: root
         - name: POSTGRES_PASSWORD
-          value: your_postgres_password
+          valueFrom:
+            secretKeyRef:
+              name: backend-env
+              key: POSTGRES_PASSWORD
         ports:
         - containerPort: 5432
         volumeMounts:

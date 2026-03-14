@@ -14,11 +14,10 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: medcore-frontend:latest
-        imagePullPolicy: IfNotPresent
-        env:
-        - name: VITE_API_URL
-          value: "http://medcore-backend:8000"
+        # Update this tag to the SHA produced by the docker-publish workflow
+        # VITE_API_URL is baked in at build time (/api) — no runtime env var needed
+        image: ghcr.io/salaisanmargam/hospital-management-system-frontend:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 80
         resources:

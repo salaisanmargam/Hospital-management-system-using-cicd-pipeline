@@ -1,6 +1,6 @@
 # MedCore HMS — Hospital Management System
 
-A full-stack Hospital Management System with a **React + TypeScript** frontend and a **FastAPI + MySQL** backend. Features role-based access control, real-time data from a MySQL database, and a clean modular architecture.
+A full-stack Hospital Management System with a **React + TypeScript** frontend and a **FastAPI + PostgreSQL** backend. Features role-based access control, real-time data from a MySQL database, and a clean modular architecture.
 
 ---
 
@@ -10,9 +10,9 @@ A full-stack Hospital Management System with a **React + TypeScript** frontend a
 
 | Tool       | Version    |
 |------------|------------|
-| Node.js    | >= 18      |
+| Node.js    | >= 20      |
 | Python     | >= 3.11    |
-| MySQL      | >= 8.0     |
+| Docker     | >= 24      |
 
 ### 1. Clone & Install
 
@@ -38,16 +38,10 @@ VITE_USE_MOCK_AUTH=false
 ```env
 APP_NAME=MedCore API
 APP_ENV=development
-APP_HOST=0.0.0.0
-APP_PORT=8000
-APP_CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000
+APP_CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000
 
-MYSQL_HOST=localhost
-MYSQL_PORT=3306
-MYSQL_USER=root
-MYSQL_PASSWORD=your_mysql_password
-MYSQL_DATABASE=medcore_hms
-MYSQL_POOL_SIZE=5
+DATABASE_URL=postgresql://root:your_password@localhost:5432/medcore_hms
+DB_POOL_SIZE=5
 
 JWT_SECRET=change_this_secret
 JWT_ALGORITHM=HS256
@@ -57,11 +51,9 @@ JWT_EXPIRE_MINUTES=60
 ### 3. Setup Database
 
 ```bash
-# Create the database and tables
-mysql -u root -p < backend/schema.sql
-
-# Seed sample data (patients, medicines, beds, staff, etc.)
+# Apply schema then seed demo data (from backend/ directory)
 cd backend
+python init_db.py
 python seed_db.py
 cd ..
 ```
@@ -130,10 +122,10 @@ medcore/
 │       ├── api.ts          # API client (fetch wrapper, auth helpers)
 │       └── mockData.ts     # Fallback mock data (dev only)
 │
-└── backend/                # Backend (FastAPI + MySQL)
+└── backend/                # Backend (FastAPI + PostgreSQL)
     ├── .env                # Backend env vars (DB, JWT config)
     ├── requirements.txt    # Python dependencies
-    ├── schema.sql          # Database schema (13 tables)
+    ├── schema_pg.sql       # Database schema (PostgreSQL, 13 tables)
     ├── seed_db.py          # Sample data seeder
     ├── init_db.py          # Database initializer
     └── app/
@@ -195,8 +187,8 @@ medcore/
 | Layer    | Technology                                                                  |
 |----------|-----------------------------------------------------------------------------|
 | Frontend | React 19, TypeScript, Vite 6, Tailwind CSS (CDN), Recharts, Lucide Icons   |
-| Backend  | Python 3.11+, FastAPI, Uvicorn, MySQL Connector                            |
-| Database | MySQL 8.0 (13 tables, InnoDB)                                              |
+| Backend  | Python 3.11+, FastAPI, Uvicorn, psycopg2                                   |
+| Database | PostgreSQL 16 (13 tables)                                                  |
 | Auth     | JWT (python-jose), Argon2 (passlib)                                        |
 
 ---
@@ -232,7 +224,7 @@ medcore/
 
 13 tables: `users`, `staff`, `patients`, `vitals`, `medicines`, `beds`, `appointments`, `prescriptions`, `prescription_items`, `lab_tests`, `bills`, `audit_logs`, `doctor_profiles`
 
-See [backend/schema.sql](backend/schema.sql) for the full schema.
+See [backend/schema_pg.sql](backend/schema_pg.sql) for the full schema.
 
 ---
 

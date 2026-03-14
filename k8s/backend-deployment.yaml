@@ -14,8 +14,9 @@ spec:
     spec:
       containers:
       - name: backend
-        image: medcore-backend:latest
-        imagePullPolicy: IfNotPresent
+        # Update this tag to the SHA produced by the docker-publish workflow
+        image: ghcr.io/salaisanmargam/hospital-management-system-backend:latest
+        imagePullPolicy: Always
         envFrom:
         - secretRef:
             name: backend-env
