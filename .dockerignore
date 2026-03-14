@@ -1,0 +1,31 @@
+# Version control
+.git
+.gitignore
+
+# Python
+**/__pycache__
+**/*.pyc
+**/*.pyo
+.venv
+backend/.venv
+
+# Node
+frontend/node_modules
+frontend/dist
+
+# Local env files (never bake secrets into images)
+.env
+backend/.env
+
+# CI / editor
+.github
+.vscode
+*.md
+
+# Test artifacts
+backend/tests
+backend/.pytest_cache
+backend/pytest.ini
+
+# K8s manifests (not needed in image)
+k8s/
