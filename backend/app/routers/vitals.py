@@ -49,11 +49,13 @@ def upsert_vitals(payload: dict, conn=Depends(get_conn), user=Depends(get_curren
     cursor.execute("SELECT id FROM vitals WHERE patient_id = %s ORDER BY last_updated DESC LIMIT 1", (patient_id,))
     existing = cursor.fetchone()
 
+    recorded_by = user["id"] if user.get("role") in ("Nurse", "Doctor", "Admin") else None
+
     if existing:
         cursor.execute(
             """
             UPDATE vitals SET bp = %s, heart_rate = %s, temperature = %s, spo2 = %s,
-                              last_updated = NOW()
+                              recorded_by = %s, last_updated = NOW()
             WHERE id = %s
             """,
             (
@@ -61,14 +63,15 @@ def upsert_vitals(payload: dict, conn=Depends(get_conn), user=Depends(get_curren
                 payload.get("heart_rate"),
                 payload.get("temperature"),
                 payload.get("spo2"),
+                recorded_by,
                 existing["id"],
             ),
         )
     else:
         cursor.execute(
             """
-            INSERT INTO vitals (patient_id, bp, heart_rate, temperature, spo2)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO vitals (patient_id, bp, heart_rate, temperature, spo2, recorded_by)
+            VALUES (%s, %s, %s, %s, %s, %s)
             """,
             (
                 patient_id,
@@ -76,6 +79,7 @@ def upsert_vitals(payload: dict, conn=Depends(get_conn), user=Depends(get_curren
                 payload.get("heart_rate"),
                 payload.get("temperature"),
                 payload.get("spo2"),
+                recorded_by,
             ),
         )
 

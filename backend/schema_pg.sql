@@ -69,8 +69,10 @@ CREATE TABLE IF NOT EXISTS vitals (
   heart_rate   VARCHAR(10),
   temperature  VARCHAR(10),
   spo2         VARCHAR(10),
+  recorded_by  INT,           -- nurse who recorded this entry
   last_updated TIMESTAMPTZ    DEFAULT NOW(),
-  FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE
+  FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+  FOREIGN KEY (recorded_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
 -- ── Medicines / Pharmacy ──────────────────────────────────────
@@ -181,6 +183,27 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   details   TEXT,
   timestamp TIMESTAMPTZ DEFAULT NOW(),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- ── Nurse Orders (Doctor → Nurse clinical orders) ─────────────
+CREATE TABLE IF NOT EXISTS nurse_orders (
+  id           SERIAL PRIMARY KEY,
+  patient_id   INT NOT NULL,
+  doctor_id    INT NOT NULL,
+  nurse_id     INT,                 -- assigned nurse (nullable = unassigned)
+  order_type   VARCHAR(50) NOT NULL
+                 CHECK (order_type IN ('Medication','Observation','Procedure','Diet','Mobility','Other')),
+  instructions TEXT NOT NULL,
+  priority     VARCHAR(20) DEFAULT 'Normal'
+                 CHECK (priority IN ('Normal','Urgent')),
+  status       VARCHAR(20) DEFAULT 'Pending'
+                 CHECK (status IN ('Pending','In Progress','Completed','Cancelled')),
+  notes        TEXT,                -- nurse's completion / acknowledgement notes
+  created_at   TIMESTAMPTZ DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ DEFAULT NOW(),
+  FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+  FOREIGN KEY (doctor_id)  REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (nurse_id)   REFERENCES users(id) ON DELETE SET NULL
 );
 
 -- ── Doctor Profiles ───────────────────────────────────────────

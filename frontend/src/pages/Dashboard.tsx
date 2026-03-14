@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   BarChart,
   Bar,
@@ -10,9 +10,10 @@ import {
   AreaChart,
   Area
 } from 'recharts';
-import { Users, Calendar, AlertCircle, IndianRupee, TrendingUp, Activity, Clock, FileText, BedDouble, ShieldCheck, Stethoscope, Mail, Phone, Sun, FlaskConical, Microscope, ScanLine, Package, AlertTriangle, Pill, ArrowRight, HeartPulse } from 'lucide-react';
-import { User, UserRole, AppointmentStatus } from '../types';
+import { Users, Calendar, AlertCircle, IndianRupee, TrendingUp, Activity, Clock, FileText, BedDouble, ShieldCheck, Stethoscope, Mail, Phone, Sun, FlaskConical, Microscope, ScanLine, Package, AlertTriangle, Pill, ArrowRight, HeartPulse, ClipboardList, Plus, X, AlertCircle as AlertCircleIcon } from 'lucide-react';
+import { User, UserRole, AppointmentStatus, NurseOrderType, Staff } from '../types';
 import { useData } from '../contexts/DataContext';
+import { createNurseOrder, AUTH_STORAGE_KEY } from '../services/api';
 
 const StatCard: React.FC<{
   title: string;
@@ -71,6 +72,332 @@ interface DashboardProps {
   user: User;
 }
 
+type LabDepartment = 'Pathology' | 'Radiology' | 'Microbiology' | 'Biochemistry';
+type MachineOperationalStatus = 'Online' | 'Running' | 'Maintenance' | 'Offline';
+
+type MachineRecord = {
+  id: string;
+  name: string;
+  department: LabDepartment;
+  status: MachineOperationalStatus;
+  updatedBy?: string;
+  updatedAt?: string;
+};
+
+const MACHINE_STATUS_STORAGE_KEY = 'medcore_machine_status_v1';
+
+const LAB_TEST_CATALOG: Record<string, LabDepartment> = {
+  'Complete Blood Count (CBC)': 'Pathology',
+  'Blood Sugar (Fasting)': 'Pathology',
+  'Urine Culture': 'Microbiology',
+  'Lipid Profile': 'Biochemistry',
+  'Liver Function Test (LFT)': 'Biochemistry',
+  'X-Ray Chest': 'Radiology',
+  'MRI Scan': 'Radiology',
+};
+
+const DEFAULT_MACHINES: MachineRecord[] = [
+  { id: 'm1', name: 'MRI Scanner A', department: 'Radiology', status: 'Online' },
+  { id: 'm2', name: 'X-Ray Unit 2', department: 'Radiology', status: 'Maintenance' },
+  { id: 'm3', name: 'Centrifuge C2', department: 'Pathology', status: 'Running' },
+  { id: 'm4', name: 'Biochemistry Analyzer B1', department: 'Biochemistry', status: 'Online' },
+  { id: 'm5', name: 'Culture Incubator M3', department: 'Microbiology', status: 'Running' },
+];
+
+const normalizeLabDepartment = (value?: string): LabDepartment | undefined => {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  const map: Record<string, LabDepartment> = {
+    pathology: 'Pathology',
+    'pathology department': 'Pathology',
+    radiology: 'Radiology',
+    'radiology department': 'Radiology',
+    microbiology: 'Microbiology',
+    'microbiology department': 'Microbiology',
+    biochemistry: 'Biochemistry',
+    'biochemistry department': 'Biochemistry',
+  };
+  return map[normalized];
+};
+
+// ─── Doctor Dashboard (extracted for hooks support) ──────────────────────────
+const DoctorDashboard: React.FC<{ user: User; myAppointments: any[]; myPatientsCount: number }> = ({
+  user, myAppointments, myPatientsCount,
+}) => {
+  const { staff, patients, updateAppointmentStatus } = useData();
+
+  const [orderModal, setOrderModal] = useState<{ nurse: Staff } | null>(null);
+  const [orderForm, setOrderForm] = useState({
+    patient_id: '',
+    order_type: 'Medication' as NurseOrderType,
+    instructions: '',
+    priority: 'Normal' as 'Normal' | 'Urgent',
+  });
+  const [orderError, setOrderError] = useState('');
+  const [orderSuccess, setOrderSuccess] = useState('');
+
+  const shiftNurses = staff.filter(s => s.role === UserRole.NURSE && s.shift === (user.shift || 'Morning'));
+
+  const getToken = () => {
+    const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!stored) return null;
+    try { return (JSON.parse(stored) as { token: string }).token; } catch { return null; }
+  };
+
+  const handleOpenOrder = (nurse: Staff) => {
+    setOrderForm({ patient_id: '', order_type: 'Medication', instructions: '', priority: 'Normal' });
+    setOrderError('');
+    setOrderSuccess('');
+    setOrderModal({ nurse });
+  };
+
+  const handleSubmitOrder = async () => {
+    setOrderError('');
+    const token = getToken();
+    if (!token || !orderModal) return;
+    if (!orderForm.patient_id || !orderForm.instructions.trim()) {
+      setOrderError('Patient and instructions are required.');
+      return;
+    }
+    try {
+      await createNurseOrder(token, {
+        patient_id: Number(orderForm.patient_id),
+        nurse_id: Number(orderModal.nurse.id),
+        order_type: orderForm.order_type,
+        instructions: orderForm.instructions,
+        priority: orderForm.priority,
+      });
+      setOrderSuccess(`Order sent to ${orderModal.nurse.name}!`);
+      setTimeout(() => setOrderModal(null), 1400);
+    } catch (e: any) {
+      setOrderError(e.message ?? 'Failed to send order');
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="glass-card rounded-2xl p-6 animate-fade-in-up">
+        <div className="flex flex-col md:flex-row gap-6 items-center md:items-start">
+          <div className="relative group">
+            <div className="absolute -inset-1 bg-gradient-to-r from-sky-400 to-teal-400 rounded-full opacity-30 group-hover:opacity-60 transition-opacity blur-md"></div>
+            <img src={user.avatarUrl} alt={user.name} className="relative w-24 h-24 rounded-full border-4 border-white shadow-lg object-cover" />
+          </div>
+          <div className="flex-1 text-center md:text-left">
+            <div className="flex items-center justify-center md:justify-start gap-2">
+              <h2 className="text-2xl font-display font-bold text-slate-800">{user.name}</h2>
+              <span className="bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-700 text-xs px-3 py-1 rounded-full font-semibold border border-emerald-200">Active</span>
+            </div>
+            <p className="text-slate-500 font-medium mt-1">{user.department || 'Specialist'}</p>
+            <div className="flex flex-wrap gap-4 mt-3 justify-center md:justify-start text-sm text-slate-600">
+              <span className="flex items-center gap-1.5 bg-slate-100 px-3 py-1 rounded-full"><Mail size={14} className="text-slate-400" /> {user.email}</span>
+              <span className="flex items-center gap-1.5 bg-slate-100 px-3 py-1 rounded-full"><Phone size={14} className="text-slate-400" /> {user.contact || 'No contact info'}</span>
+            </div>
+          </div>
+          <div className="bg-gradient-to-br from-indigo-50 to-purple-50 p-5 rounded-xl text-center min-w-[150px] border border-indigo-100">
+            <p className="text-[10px] text-indigo-500 uppercase font-bold tracking-wider">Today's Shift</p>
+            <p className="text-lg font-display font-bold text-indigo-700 mt-1">{user.shift || 'Not set'}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <StatCard title="My Patients" value={myPatientsCount.toString()} icon={<Users size={20} />} color="bg-blue-500" delay={0.05} />
+        <StatCard title="My Appointments" value={myAppointments.length.toString()} icon={<Calendar size={20} />} color="bg-purple-500" delay={0.1} />
+        <StatCard title="Nurses On Shift" value={shiftNurses.length.toString()} icon={<HeartPulse size={20} />} color="bg-rose-500" delay={0.15} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* My Schedule */}
+        <div className="lg:col-span-2 glass-card rounded-2xl overflow-hidden animate-fade-in-up opacity-0" style={{ animationDelay: '0.25s', animationFillMode: 'forwards' }}>
+          <div className="p-4 border-b border-slate-200/50 bg-gradient-to-r from-slate-50 to-sky-50 flex justify-between items-center">
+            <h3 className="font-display font-bold text-slate-800 flex items-center gap-2">
+              <Stethoscope size={18} className="text-teal-500" />
+              My Schedule
+            </h3>
+          </div>
+          {myAppointments.length > 0 ? (
+            <table className="w-full text-left">
+              <thead className="bg-slate-50/80 text-slate-500 text-xs uppercase tracking-wider">
+                <tr>
+                  <th className="px-4 py-3">Time</th>
+                  <th className="px-4 py-3">Patient</th>
+                  <th className="px-4 py-3">Type</th>
+                  <th className="px-4 py-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {myAppointments.map(app => (
+                  <tr key={app.id} className="text-sm hover:bg-sky-50/50 transition-colors">
+                    <td className="px-4 py-3 font-mono text-slate-600">{app.time}</td>
+                    <td className="px-4 py-3 font-medium text-slate-900">{app.patientName}</td>
+                    <td className="px-4 py-3 text-slate-600">{app.type}</td>
+                    <td className="px-4 py-3">
+                      <select
+                        value={app.status}
+                        onChange={e => updateAppointmentStatus(app.id, e.target.value as any)}
+                        className={`text-xs font-semibold rounded-full px-2.5 py-1 border-0 outline-none cursor-pointer focus:ring-2 focus:ring-sky-300 ${
+                          app.status === 'Emergency' ? 'bg-red-100 text-red-700' :
+                          app.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
+                          app.status === 'Cancelled' ? 'bg-slate-100 text-slate-500' :
+                          'bg-sky-100 text-sky-700'
+                        }`}
+                      >
+                        <option value="Scheduled">Scheduled</option>
+                        <option value="Completed">Completed</option>
+                        <option value="Cancelled">Cancelled</option>
+                        <option value="Emergency">Emergency</option>
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="p-8 text-center text-slate-500">No appointments assigned.</div>
+          )}
+        </div>
+
+        {/* My Nursing Team */}
+        <div className="glass-card rounded-2xl overflow-hidden animate-fade-in-up opacity-0" style={{ animationDelay: '0.3s', animationFillMode: 'forwards' }}>
+          <div className="p-4 border-b border-slate-200/50 bg-gradient-to-r from-rose-50 to-pink-50 flex justify-between items-center">
+            <h3 className="font-display font-bold text-rose-900 flex items-center gap-2">
+              <HeartPulse size={18} className="text-rose-500" />
+              My Nursing Team
+            </h3>
+            <span className="text-[10px] font-bold text-rose-500 uppercase bg-white px-2.5 py-1 rounded-full border border-rose-100 tracking-wider">
+              {user.shift || 'Morning'} Shift
+            </span>
+          </div>
+          <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto">
+            {shiftNurses.length > 0 ? (
+              shiftNurses.map(nurse => (
+                <div key={nurse.id} className="p-4 hover:bg-sky-50/50 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <img src={nurse.avatarUrl} alt={nurse.name} className="w-10 h-10 rounded-full border-2 border-white shadow-sm object-cover" />
+                      <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${nurse.status === 'Active' ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-slate-900 truncate">{nurse.name}</p>
+                      <p className="text-xs text-slate-500">{nurse.department}</p>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500">
+                    <span className="flex items-center gap-1"><Phone size={11} />{nurse.contact || '—'}</span>
+                    <button
+                      onClick={() => handleOpenOrder(nurse)}
+                      className="flex items-center gap-1 px-2.5 py-1 bg-teal-600 text-white rounded-lg text-xs font-semibold hover:bg-teal-700 transition shrink-0"
+                      title={`Send care order to ${nurse.name}`}
+                    >
+                      <ClipboardList size={12} /> Assign Order
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="p-8 text-center">
+                <HeartPulse className="mx-auto text-slate-300 mb-2" size={28} />
+                <p className="text-sm text-slate-500">No nurses on your current shift.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Nurse Order Modal */}
+      {orderModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col border border-slate-200/50">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 to-teal-50/30">
+              <div className="flex items-center gap-2">
+                <ClipboardList size={18} className="text-teal-600" />
+                <div>
+                  <h3 className="font-bold text-slate-800 text-sm">Assign Care Order</h3>
+                  <p className="text-xs text-slate-500">To: {orderModal.nurse.name} · {orderModal.nurse.department}</p>
+                </div>
+              </div>
+              <button onClick={() => setOrderModal(null)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {orderError && (
+                <div className="flex items-center gap-2 bg-red-50 border border-red-100 text-red-700 text-sm p-3 rounded-lg">
+                  <AlertCircleIcon size={15} /> {orderError}
+                </div>
+              )}
+              {orderSuccess && (
+                <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 text-emerald-700 text-sm p-3 rounded-lg font-semibold">
+                  ✓ {orderSuccess}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Patient <span className="text-red-500">*</span></label>
+                <select
+                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-teal-500 bg-white"
+                  value={orderForm.patient_id}
+                  onChange={e => setOrderForm(f => ({ ...f, patient_id: e.target.value }))}
+                >
+                  <option value="">Select patient…</option>
+                  {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Order Type</label>
+                  <select
+                    className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-teal-500 bg-white"
+                    value={orderForm.order_type}
+                    onChange={e => setOrderForm(f => ({ ...f, order_type: e.target.value as NurseOrderType }))}
+                  >
+                    {(['Medication','Observation','Procedure','Diet','Mobility','Other'] as NurseOrderType[]).map(t => (
+                      <option key={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Priority</label>
+                  <select
+                    className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-teal-500 bg-white"
+                    value={orderForm.priority}
+                    onChange={e => setOrderForm(f => ({ ...f, priority: e.target.value as 'Normal' | 'Urgent' }))}
+                  >
+                    <option>Normal</option>
+                    <option>Urgent</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Instructions <span className="text-red-500">*</span></label>
+                <textarea
+                  className="w-full p-3 border border-slate-300 rounded-lg text-sm h-24 resize-none focus:outline-none focus:border-teal-500"
+                  placeholder="Describe the task for the nurse in detail…"
+                  value={orderForm.instructions}
+                  onChange={e => setOrderForm(f => ({ ...f, instructions: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-slate-200 flex gap-3 bg-slate-50">
+              <button onClick={() => setOrderModal(null)} className="flex-1 py-2.5 border border-slate-300 text-slate-700 rounded-lg font-medium hover:bg-white transition text-sm">
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitOrder}
+                className="flex-1 py-2.5 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 transition flex items-center justify-center gap-2 text-sm"
+              >
+                <ClipboardList size={15} /> Send Order
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
   const {
     patients,
@@ -80,11 +407,144 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     beds,
     prescriptions,
     staff,
+    vitals,
     revenueData,
     appointmentStats,
-    auditLogs
+    auditLogs,
+    updateAppointmentStatus,
+    updateVitals,
+    addLabTest,
   } = useData();
   const role = user.role;
+
+  const [showVitalsModal, setShowVitalsModal] = useState(false);
+  const [selectedPatientForVitals, setSelectedPatientForVitals] = useState<{ id: string; name: string } | null>(null);
+  const [vitalsForm, setVitalsForm] = useState({ bp: '', heartRate: '', temperature: '', spO2: '' });
+  const [savingVitals, setSavingVitals] = useState(false);
+
+  const [showNewLabEntryModal, setShowNewLabEntryModal] = useState(false);
+  const [selectedLabPatientId, setSelectedLabPatientId] = useState('');
+  const [selectedLabTestType, setSelectedLabTestType] = useState<string>('Complete Blood Count (CBC)');
+  const [selectedLabPriority, setSelectedLabPriority] = useState<'Normal' | 'Urgent'>('Normal');
+
+  const [machineFilter, setMachineFilter] = useState<'My Department' | 'All'>('My Department');
+  const [machineRecords, setMachineRecords] = useState<MachineRecord[]>(DEFAULT_MACHINES);
+  const [machineInfo, setMachineInfo] = useState('');
+
+  const technicianDepartment = useMemo(() => normalizeLabDepartment(user.department), [user.department]);
+
+  const availableLabTestTypes = useMemo(() => {
+    const entries = Object.entries(LAB_TEST_CATALOG);
+    if (!technicianDepartment) return entries.map(([testName]) => testName);
+    return entries.filter(([, dept]) => dept === technicianDepartment).map(([testName]) => testName);
+  }, [technicianDepartment]);
+
+  useEffect(() => {
+    if (availableLabTestTypes.length === 0) return;
+    if (!availableLabTestTypes.includes(selectedLabTestType)) {
+      setSelectedLabTestType(availableLabTestTypes[0]);
+    }
+  }, [availableLabTestTypes, selectedLabTestType]);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(MACHINE_STATUS_STORAGE_KEY);
+      if (!saved) return;
+      const parsed = JSON.parse(saved) as MachineRecord[];
+      if (!Array.isArray(parsed) || parsed.length === 0) return;
+      setMachineRecords(parsed);
+    } catch {
+      // ignore invalid local storage payload
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(MACHINE_STATUS_STORAGE_KEY, JSON.stringify(machineRecords));
+  }, [machineRecords]);
+
+  const visibleMachines = useMemo(() => {
+    if (machineFilter === 'All') return machineRecords;
+    if (!technicianDepartment) return [];
+    return machineRecords.filter(machine => machine.department === technicianDepartment);
+  }, [machineFilter, machineRecords, technicianDepartment]);
+
+  const canUpdateMachine = useCallback((machine: MachineRecord) => {
+    if (role === UserRole.ADMIN) return true;
+    if (role !== UserRole.LAB_TECHNICIAN) return false;
+    if (!technicianDepartment) return false;
+    return machine.department === technicianDepartment;
+  }, [role, technicianDepartment]);
+
+  const handleMachineStatusChange = useCallback((machineId: string, status: MachineOperationalStatus) => {
+    const now = new Date().toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    setMachineRecords(prev => prev.map(machine => (
+      machine.id === machineId
+        ? { ...machine, status, updatedBy: user.name, updatedAt: now }
+        : machine
+    )));
+    setMachineInfo(`Machine status updated by ${user.name} at ${now}`);
+  }, [user.name]);
+
+  const handleCreateLabEntry = useCallback(() => {
+    const patient = patients.find(p => p.id === selectedLabPatientId);
+    if (!patient || !selectedLabTestType) return;
+
+    const inferredDepartment = technicianDepartment || LAB_TEST_CATALOG[selectedLabTestType];
+    addLabTest({
+      id: `t${Date.now()}`,
+      patientName: patient.name,
+      testName: selectedLabTestType,
+      doctorName: 'Doctor Order',
+      date: new Date().toISOString().split('T')[0],
+      department: inferredDepartment,
+      priority: selectedLabPriority,
+      status: 'Pending',
+    });
+
+    setShowNewLabEntryModal(false);
+    setSelectedLabPatientId('');
+    setSelectedLabPriority('Normal');
+  }, [patients, selectedLabPatientId, selectedLabTestType, technicianDepartment, addLabTest, selectedLabPriority]);
+
+  const getCareStatus = useCallback((patientId: string) => {
+    const current = vitals[patientId];
+    if (!current) return 'Under Observation';
+
+    const hr = Number(current.heartRate);
+    const temp = Number(current.temperature);
+    const spo2 = Number(current.spO2);
+
+    if (!Number.isNaN(spo2) && spo2 < 92) return 'Critical';
+    if (!Number.isNaN(hr) && (hr > 120 || hr < 45)) return 'Critical';
+    if (!Number.isNaN(temp) && temp >= 101) return 'Watch';
+    return 'Stable';
+  }, [vitals]);
+
+  const openVitalsEditor = useCallback((patientId: string, patientName: string) => {
+    const current = vitals[patientId];
+    setVitalsForm({
+      bp: current?.bp || '',
+      heartRate: current?.heartRate || '',
+      temperature: current?.temperature || '',
+      spO2: current?.spO2 || '',
+    });
+    setSelectedPatientForVitals({ id: patientId, name: patientName });
+    setShowVitalsModal(true);
+  }, [vitals]);
+
+  const handleSaveVitals = useCallback(async () => {
+    if (!selectedPatientForVitals) return;
+    setSavingVitals(true);
+    try {
+      await updateVitals(selectedPatientForVitals.id, {
+        ...vitalsForm,
+        lastUpdated: new Date().toISOString(),
+      });
+      setShowVitalsModal(false);
+    } finally {
+      setSavingVitals(false);
+    }
+  }, [selectedPatientForVitals, updateVitals, vitalsForm]);
 
   // PATIENT DASHBOARD
   if (role === UserRole.PATIENT) {
@@ -93,7 +553,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
       (a.status === AppointmentStatus.SCHEDULED || a.status === AppointmentStatus.EMERGENCY)
     );
 
-    const myVitals = "120/80 bpm";
+    const myPatient = patients.find(p => String((p as any).user_id) === String(user.id));
+    const myVitalsData = myPatient ? vitals[myPatient.id] : null;
+    const myVitalsDisplay = myVitalsData?.bp ? `${myVitalsData.bp} mmHg` : 'No data yet';
     const myReports = labTests.filter(t => (t.patientName === user.name) && t.status === 'Pending').length;
 
     return (
@@ -127,9 +589,45 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
               </div>
             </div>
           </div>
-          <StatCard title="Recent Vitals" value={myVitals} icon={<Activity size={20} />} color="bg-blue-500" delay={0.15} />
+          <StatCard title="Recent Vitals" value={myVitalsDisplay} icon={<Activity size={20} />} color="bg-blue-500" delay={0.15} />
           <StatCard title="Pending Reports" value={`${myReports} Reports`} icon={<FileText size={20} />} color="bg-amber-500" delay={0.2} />
         </div>
+
+        {myVitalsData && (
+          <div className="glass-card rounded-2xl p-6 animate-fade-in-up opacity-0" style={{ animationDelay: '0.25s', animationFillMode: 'forwards' }}>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-display font-bold text-slate-800 flex items-center gap-2">
+                <HeartPulse size={20} className="text-sky-500" />
+                My Latest Vitals
+              </h3>
+              {myVitalsData.lastUpdated && (
+                <span className="text-xs text-slate-400 bg-slate-100 px-3 py-1 rounded-full">Last updated: {myVitalsData.lastUpdated}</span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-sky-50 border border-sky-100 rounded-xl p-4 text-center">
+                <p className="text-xs font-bold text-sky-500 uppercase tracking-wider mb-2">Blood Pressure</p>
+                <p className="text-2xl font-display font-bold text-slate-800">{myVitalsData.bp || '—'}</p>
+                <p className="text-xs text-slate-400 mt-1">mmHg</p>
+              </div>
+              <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-center">
+                <p className="text-xs font-bold text-red-500 uppercase tracking-wider mb-2">Heart Rate</p>
+                <p className="text-2xl font-display font-bold text-slate-800">{myVitalsData.heartRate || '—'}</p>
+                <p className="text-xs text-slate-400 mt-1">bpm</p>
+              </div>
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-center">
+                <p className="text-xs font-bold text-amber-500 uppercase tracking-wider mb-2">Temperature</p>
+                <p className="text-2xl font-display font-bold text-slate-800">{myVitalsData.temperature || '—'}</p>
+                <p className="text-xs text-slate-400 mt-1">°F</p>
+              </div>
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-center">
+                <p className="text-xs font-bold text-blue-500 uppercase tracking-wider mb-2">SpO2</p>
+                <p className="text-2xl font-display font-bold text-slate-800">{myVitalsData.spO2 || '—'}</p>
+                <p className="text-xs text-slate-400 mt-1">%</p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -171,50 +669,165 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                   <th className="pb-3">Ward/Bed</th>
                   <th className="pb-3">Condition</th>
                   <th className="pb-3">Status</th>
+                  <th className="pb-3">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {beds.filter(b => b.status === 'Occupied').map(bed => (
-                  <tr key={bed.id} className="text-sm hover:bg-sky-50/50 transition-colors">
-                    <td className="py-3.5 pl-1 font-medium text-slate-900">{bed.patientName}</td>
-                    <td className="py-3.5 text-slate-600">{bed.ward} - {bed.number}</td>
-                    <td className="py-3.5 text-slate-600">Post-Surgery</td>
-                    <td className="py-3.5"><span className="bg-sky-100 text-sky-700 px-2.5 py-1 rounded-full text-xs font-semibold">Stable</span></td>
-                  </tr>
-                ))}
+                {beds.filter(b => b.status === 'Occupied').map(bed => {
+                  const patient = patients.find(p => p.id === String(bed.patientId));
+                  const patientId = patient?.id ?? String(bed.patientId || '');
+                  const careStatus = patientId ? getCareStatus(patientId) : 'Under Observation';
+                  const statusClass =
+                    careStatus === 'Critical'
+                      ? 'bg-red-100 text-red-700'
+                      : careStatus === 'Watch'
+                        ? 'bg-amber-100 text-amber-700'
+                        : careStatus === 'Stable'
+                          ? 'bg-sky-100 text-sky-700'
+                          : 'bg-slate-100 text-slate-700';
+
+                  return (
+                    <tr key={bed.id} className="text-sm hover:bg-sky-50/50 transition-colors">
+                      <td className="py-3.5 pl-1 font-medium text-slate-900">{bed.patientName}</td>
+                      <td className="py-3.5 text-slate-600">{bed.ward} - {bed.number}</td>
+                      <td className="py-3.5 text-slate-600">{patient?.condition || '—'}</td>
+                      <td className="py-3.5">
+                        <span className={`${statusClass} px-2.5 py-1 rounded-full text-xs font-semibold`}>{careStatus}</span>
+                      </td>
+                      <td className="py-3.5">
+                        {patientId ? (
+                          <button
+                            onClick={() => openVitalsEditor(patientId, bed.patientName || patient?.name || 'Patient')}
+                            className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold hover:bg-slate-200 transition"
+                          >
+                            Update Vitals
+                          </button>
+                        ) : (
+                          <span className="text-xs text-slate-400">No patient record</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
+
+        {showVitalsModal && selectedPatientForVitals && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col border border-slate-200/50">
+              <div className="p-5 border-b border-slate-200/50 flex justify-between items-center bg-gradient-to-r from-sky-50 to-teal-50/30">
+                <div>
+                  <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                    <Activity size={18} className="text-sky-500" /> Update Vitals
+                  </h3>
+                  <p className="text-xs text-slate-500">{selectedPatientForVitals.name}</p>
+                </div>
+                <button onClick={() => setShowVitalsModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+              </div>
+
+              <div className="p-6 grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">Blood Pressure</label>
+                  <input
+                    className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-sky-500"
+                    placeholder="120/80"
+                    value={vitalsForm.bp}
+                    onChange={e => setVitalsForm(v => ({ ...v, bp: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">Heart Rate</label>
+                  <input
+                    className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-sky-500"
+                    placeholder="72"
+                    value={vitalsForm.heartRate}
+                    onChange={e => setVitalsForm(v => ({ ...v, heartRate: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">Temperature</label>
+                  <input
+                    className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-sky-500"
+                    placeholder="98.6"
+                    value={vitalsForm.temperature}
+                    onChange={e => setVitalsForm(v => ({ ...v, temperature: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">SpO2</label>
+                  <input
+                    className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-sky-500"
+                    placeholder="98"
+                    value={vitalsForm.spO2}
+                    onChange={e => setVitalsForm(v => ({ ...v, spO2: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="p-5 border-t border-slate-200 flex gap-3 bg-slate-50">
+                <button onClick={() => setShowVitalsModal(false)} className="flex-1 py-2.5 border border-slate-300 text-slate-700 rounded-lg font-medium hover:bg-white transition">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveVitals}
+                  disabled={savingVitals}
+                  className="flex-1 py-2.5 bg-sky-600 text-white rounded-lg font-medium hover:bg-sky-700 transition disabled:opacity-60"
+                >
+                  {savingVitals ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
   // LAB TECHNICIAN DASHBOARD
   if (role === UserRole.LAB_TECHNICIAN) {
-    const pendingTests = labTests.filter(t => t.status === 'Pending').length;
-    const processingTests = labTests.filter(t => t.status === 'In Progress').length;
-    const completedToday = labTests.filter(t => t.status === 'Completed').length;
-    const urgentTests = labTests.filter(t => t.priority === 'Urgent' && t.status !== 'Completed');
+    const scopedTests = technicianDepartment
+      ? labTests.filter(test => test.department === technicianDepartment)
+      : [];
+
+    const pendingTests = scopedTests.filter(t => t.status === 'Pending').length;
+    const processingTests = scopedTests.filter(t => t.status === 'In Progress').length;
+    const completedToday = scopedTests.filter(t => t.status === 'Completed').length;
+    const urgentTests = scopedTests.filter(t => t.priority === 'Urgent' && t.status !== 'Completed');
 
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center glass-card p-6 rounded-2xl animate-fade-in-up">
           <div>
             <h2 className="text-2xl font-display font-bold text-slate-800">Laboratory Operations</h2>
-            <p className="text-slate-500 mt-1">Technician Control Panel</p>
+            <p className="text-slate-500 mt-1">
+              Technician Control Panel {technicianDepartment ? `· ${technicianDepartment}` : '· Department not assigned'}
+            </p>
           </div>
           <div className="flex gap-3">
-            <button className="flex items-center gap-2 bg-slate-100 text-slate-700 px-4 py-2.5 rounded-xl font-medium hover:bg-slate-200 transition-all text-sm">
+            <button
+              onClick={() => setMachineFilter(prev => prev === 'My Department' ? 'All' : 'My Department')}
+              className="flex items-center gap-2 bg-slate-100 text-slate-700 px-4 py-2.5 rounded-xl font-medium hover:bg-slate-200 transition-all text-sm"
+            >
               <Activity size={18} />
-              Equipment Status
+              Equipment Status ({machineFilter})
             </button>
-            <button className="flex items-center gap-2 bg-gradient-to-r from-sky-500 to-teal-500 text-white px-4 py-2.5 rounded-xl font-medium hover:from-sky-600 hover:to-teal-600 transition-all shadow-lg shadow-sky-500/20 text-sm">
+            <button
+              onClick={() => setShowNewLabEntryModal(true)}
+              className="flex items-center gap-2 bg-gradient-to-r from-sky-500 to-teal-500 text-white px-4 py-2.5 rounded-xl font-medium hover:from-sky-600 hover:to-teal-600 transition-all shadow-lg shadow-sky-500/20 text-sm"
+            >
               <FlaskConical size={18} />
               New Test Entry
             </button>
           </div>
         </div>
+
+        {!technicianDepartment && (
+          <div className="glass-card rounded-2xl border border-amber-200 bg-amber-50/60 p-4 text-sm text-amber-700">
+            Your account needs a valid lab department (Pathology, Radiology, Microbiology, or Biochemistry) to process requests and update machine statuses.
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <StatCard title="Samples Pending" value={pendingTests.toString()} icon={<FlaskConical size={20} />} color="bg-amber-500" delay={0.05} />
@@ -267,40 +880,157 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
               <ScanLine size={18} className="text-teal-500" />
               Machine Status
             </h3>
+            <p className="text-xs text-slate-500 mb-3">
+              Maintained by lab technicians of each department; only your department's machines are editable from this panel.
+            </p>
             <div className="space-y-3">
-              <div className="flex justify-between items-center p-3 border border-slate-100 rounded-xl hover:border-sky-200 transition-colors group">
-                <div className="flex items-center gap-3">
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-lg shadow-emerald-400/50"></div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-700">MRI Scanner A</p>
-                    <p className="text-xs text-slate-500">Radiology</p>
+              {visibleMachines.length > 0 ? visibleMachines.map(machine => {
+                const isEditable = canUpdateMachine(machine);
+                const badgeClass = machine.status === 'Maintenance' || machine.status === 'Offline'
+                  ? 'bg-red-100 text-red-700'
+                  : machine.status === 'Running'
+                    ? 'bg-sky-100 text-sky-700'
+                    : 'bg-emerald-50 text-emerald-700';
+
+                const dotClass = machine.status === 'Maintenance' || machine.status === 'Offline'
+                  ? 'bg-red-500 shadow-red-500/50'
+                  : machine.status === 'Running'
+                    ? 'bg-sky-500 shadow-sky-500/50'
+                    : 'bg-emerald-400 shadow-emerald-400/50';
+
+                return (
+                  <div key={machine.id} className="p-3 border border-slate-100 rounded-xl hover:border-sky-200 transition-colors">
+                    <div className="flex justify-between items-center gap-2">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-2.5 h-2.5 rounded-full shadow-lg ${dotClass}`}></div>
+                        <div>
+                          <p className="text-sm font-bold text-slate-700">{machine.name}</p>
+                          <p className="text-xs text-slate-500">{machine.department}</p>
+                        </div>
+                      </div>
+                      <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${badgeClass}`}>{machine.status}</span>
+                    </div>
+
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <select
+                        value={machine.status}
+                        onChange={(e) => handleMachineStatusChange(machine.id, e.target.value as MachineOperationalStatus)}
+                        disabled={!isEditable}
+                        className="text-xs px-2 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-700 disabled:bg-slate-100 disabled:text-slate-400"
+                      >
+                        <option value="Online">Online</option>
+                        <option value="Running">Running</option>
+                        <option value="Maintenance">Maintenance</option>
+                        <option value="Offline">Offline</option>
+                      </select>
+                      <span className="text-[11px] text-slate-400">
+                        {isEditable ? 'Managed by you' : `Managed by ${machine.department} technician`}
+                      </span>
+                    </div>
+
+                    {machine.updatedBy && machine.updatedAt && (
+                      <p className="text-[11px] text-slate-400 mt-1">Updated by {machine.updatedBy} · {machine.updatedAt}</p>
+                    )}
                   </div>
+                );
+              }) : (
+                <div className="p-6 text-center text-sm text-slate-500 border border-slate-100 rounded-xl bg-slate-50">
+                  No machines found for this filter.
                 </div>
-                <span className="text-xs bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full font-medium">Online</span>
-              </div>
-              <div className="flex justify-between items-center p-3 border border-slate-100 rounded-xl hover:border-sky-200 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-lg shadow-emerald-400/50"></div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-700">Centrifuge C2</p>
-                    <p className="text-xs text-slate-500">Pathology</p>
-                  </div>
+              )}
+
+              {machineInfo && (
+                <div className="text-[11px] text-teal-700 bg-teal-50 border border-teal-100 rounded-lg px-2.5 py-2">
+                  {machineInfo}
                 </div>
-                <span className="text-xs bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full font-medium">Running</span>
-              </div>
-              <div className="flex justify-between items-center p-3 border border-red-100 rounded-xl bg-red-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse shadow-lg shadow-red-500/50"></div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-700">X-Ray Unit 2</p>
-                    <p className="text-xs text-slate-500">Radiology</p>
-                  </div>
-                </div>
-                <span className="text-xs bg-red-100 text-red-700 px-2.5 py-1 rounded-full font-medium">Maintenance</span>
-              </div>
+              )}
             </div>
           </div>
         </div>
+
+        {showNewLabEntryModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in border border-slate-200/50">
+              <div className="p-5 border-b border-slate-200/50 flex justify-between items-center bg-gradient-to-r from-slate-50 to-sky-50/30">
+                <h3 className="font-display font-bold text-slate-800 flex items-center gap-2">
+                  <FlaskConical size={20} className="text-teal-500" />
+                  New Test Entry
+                </h3>
+                <button onClick={() => setShowNewLabEntryModal(false)} className="text-slate-400 hover:text-slate-600">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Patient</label>
+                  <select
+                    className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-teal-500"
+                    value={selectedLabPatientId}
+                    onChange={(e) => setSelectedLabPatientId(e.target.value)}
+                  >
+                    <option value="">-- Choose a Patient --</option>
+                    {patients.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Test</label>
+                  <select
+                    className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-teal-500"
+                    value={selectedLabTestType}
+                    onChange={(e) => setSelectedLabTestType(e.target.value)}
+                  >
+                    {availableLabTestTypes.map(test => (
+                      <option key={test} value={test}>{test}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-teal-600 mt-1">
+                    Routed to: <span className="font-bold">{technicianDepartment || LAB_TEST_CATALOG[selectedLabTestType]}</span>
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Priority</label>
+                  <div className="flex bg-slate-100 rounded-lg p-1">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLabPriority('Normal')}
+                      className={`flex-1 py-1.5 text-xs font-medium rounded-md transition ${selectedLabPriority === 'Normal' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`}
+                    >
+                      Normal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLabPriority('Urgent')}
+                      className={`flex-1 py-1.5 text-xs font-medium rounded-md transition ${selectedLabPriority === 'Urgent' ? 'bg-red-500 text-white shadow-sm' : 'text-slate-500'}`}
+                    >
+                      Urgent
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-4 flex gap-3">
+                  <button
+                    onClick={() => setShowNewLabEntryModal(false)}
+                    className="flex-1 py-2.5 border border-slate-300 text-slate-700 rounded-lg font-medium hover:bg-slate-50 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleCreateLabEntry}
+                    disabled={!selectedLabPatientId || !selectedLabTestType || !technicianDepartment}
+                    className="flex-1 py-2.5 bg-gradient-to-r from-sky-500 to-teal-500 text-white rounded-xl font-medium hover:from-sky-600 hover:to-teal-600 transition-all shadow-lg shadow-sky-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Save Entry
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -423,125 +1153,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
   if (role === UserRole.DOCTOR) {
     const myAppointments = appointments.filter(a => a.doctorId === user.id);
     const myPatientsCount = new Set(myAppointments.map(a => a.patientId)).size;
-    const myRevenue = myAppointments.filter(a => a.status === AppointmentStatus.COMPLETED || a.status === AppointmentStatus.SCHEDULED).length * 150;
 
-    return (
-      <div className="space-y-6">
-        <div className="glass-card rounded-2xl p-6 animate-fade-in-up">
-          <div className="flex flex-col md:flex-row gap-6 items-center md:items-start">
-            <div className="relative group">
-              <div className="absolute -inset-1 bg-gradient-to-r from-sky-400 to-teal-400 rounded-full opacity-30 group-hover:opacity-60 transition-opacity blur-md"></div>
-              <img src={user.avatarUrl} alt={user.name} className="relative w-24 h-24 rounded-full border-4 border-white shadow-lg object-cover" />
-            </div>
-            <div className="flex-1 text-center md:text-left">
-              <div className="flex items-center justify-center md:justify-start gap-2">
-                <h2 className="text-2xl font-display font-bold text-slate-800">{user.name}</h2>
-                <span className="bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-700 text-xs px-3 py-1 rounded-full font-semibold border border-emerald-200">Active</span>
-              </div>
-              <p className="text-slate-500 font-medium mt-1">{user.department || 'Specialist'}</p>
-              <div className="flex flex-wrap gap-4 mt-3 justify-center md:justify-start text-sm text-slate-600">
-                <span className="flex items-center gap-1.5 bg-slate-100 px-3 py-1 rounded-full"><Mail size={14} className="text-slate-400" /> {user.email}</span>
-                <span className="flex items-center gap-1.5 bg-slate-100 px-3 py-1 rounded-full"><Phone size={14} className="text-slate-400" /> {user.contact || 'No contact info'}</span>
-              </div>
-            </div>
-            <div className="bg-gradient-to-br from-indigo-50 to-purple-50 p-5 rounded-xl text-center min-w-[150px] border border-indigo-100">
-              <p className="text-[10px] text-indigo-500 uppercase font-bold tracking-wider">Today's Shift</p>
-              <p className="text-lg font-display font-bold text-indigo-700 mt-1">{user.shift || 'Not set'}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <StatCard title="My Patients" value={myPatientsCount.toString()} icon={<Users size={20} />} color="bg-blue-500" delay={0.05} />
-          <StatCard title="My Appointments" value={myAppointments.length.toString()} icon={<Calendar size={20} />} color="bg-purple-500" delay={0.1} />
-          <StatCard title="My Estimated Revenue" value={`₹${myRevenue}`} icon={<IndianRupee size={20} />} color="bg-emerald-500" delay={0.15} />
-          <StatCard title="Nurses On Shift" value={staff.filter(s => s.role === UserRole.NURSE && s.shift === (user.shift || 'Morning')).length.toString()} icon={<HeartPulse size={20} />} color="bg-rose-500" delay={0.2} />
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 glass-card rounded-2xl overflow-hidden animate-fade-in-up opacity-0" style={{ animationDelay: '0.25s', animationFillMode: 'forwards' }}>
-            <div className="p-4 border-b border-slate-200/50 bg-gradient-to-r from-slate-50 to-sky-50 flex justify-between items-center">
-              <h3 className="font-display font-bold text-slate-800 flex items-center gap-2">
-                <Stethoscope size={18} className="text-teal-500" />
-                My Schedule
-              </h3>
-            </div>
-            {myAppointments.length > 0 ? (
-              <table className="w-full text-left">
-                <thead className="bg-slate-50/80 text-slate-500 text-xs uppercase tracking-wider">
-                  <tr>
-                    <th className="px-4 py-3">Time</th>
-                    <th className="px-4 py-3">Patient</th>
-                    <th className="px-4 py-3">Type</th>
-                    <th className="px-4 py-3">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {myAppointments.map(app => (
-                    <tr key={app.id} className="text-sm hover:bg-sky-50/50 transition-colors">
-                      <td className="px-4 py-3 font-mono text-slate-600">{app.time}</td>
-                      <td className="px-4 py-3 font-medium text-slate-900">{app.patientName}</td>
-                      <td className="px-4 py-3 text-slate-600">{app.type}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${app.status === 'Emergency' ? 'bg-red-100 text-red-700' :
-                            app.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
-                              'bg-sky-100 text-sky-700'
-                          }`}>
-                          {app.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <div className="p-8 text-center text-slate-500">
-                No appointments assigned.
-              </div>
-            )}
-          </div>
-
-          {/* My Nursing Team */}
-          <div className="glass-card rounded-2xl overflow-hidden animate-fade-in-up opacity-0" style={{ animationDelay: '0.3s', animationFillMode: 'forwards' }}>
-            <div className="p-4 border-b border-slate-200/50 bg-gradient-to-r from-rose-50 to-pink-50 flex justify-between items-center">
-              <h3 className="font-display font-bold text-rose-900 flex items-center gap-2">
-                <HeartPulse size={18} className="text-rose-500" />
-                My Nursing Team
-              </h3>
-              <span className="text-[10px] font-bold text-rose-500 uppercase bg-white px-2.5 py-1 rounded-full border border-rose-100 tracking-wider">
-                {user.shift || 'Morning'} Shift
-              </span>
-            </div>
-            <div className="divide-y divide-slate-100 max-h-80 overflow-y-auto">
-              {staff.filter(s => s.role === UserRole.NURSE && s.shift === (user.shift || 'Morning')).length > 0 ? (
-                staff.filter(s => s.role === UserRole.NURSE && s.shift === (user.shift || 'Morning')).map(nurse => (
-                  <div key={nurse.id} className="p-4 hover:bg-sky-50/50 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="relative">
-                        <img src={nurse.avatarUrl} alt={nurse.name} className="w-10 h-10 rounded-full border-2 border-white shadow-sm object-cover" />
-                        <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${nurse.status === 'Active' ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-slate-900 truncate">{nurse.name}</p>
-                        <p className="text-xs text-slate-500">{nurse.department}</p>
-                      </div>
-                    </div>
-                    <div className="mt-2 flex items-center gap-3 text-xs text-slate-500">
-                      <span className="flex items-center gap-1"><Phone size={11} />{nurse.contact || '—'}</span>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="p-8 text-center">
-                  <HeartPulse className="mx-auto text-slate-300 mb-2" size={28} />
-                  <p className="text-sm text-slate-500">No nurses on your current shift.</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <DoctorDashboard user={user} myAppointments={myAppointments} myPatientsCount={myPatientsCount} />;
   }
 
   // ADMIN DASHBOARD (Enhanced)

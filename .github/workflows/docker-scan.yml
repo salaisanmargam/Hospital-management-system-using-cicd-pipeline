@@ -50,12 +50,17 @@ jobs:
             -t ${{ matrix.image }}:ci \
             .
 
-      # ── Install Trivy directly (avoids aquasecurity/trivy-action GitHub
-      #    API rate-limit bug where the action tries to resolve its own version)
+      # ── Install Trivy from a fixed release tarball to avoid the install.sh
+      #    GitHub tag lookup that intermittently fails in CI.
       - name: Install Trivy
         run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-            | sh -s -- -b /usr/local/bin v0.60.0
+          mkdir -p "$HOME/.local/bin"
+          curl -sfL https://github.com/aquasecurity/trivy/releases/download/v0.60.0/trivy_0.60.0_Linux-64bit.tar.gz \
+            -o trivy.tar.gz
+          tar -xzf trivy.tar.gz trivy
+          install -m 0755 trivy "$HOME/.local/bin/trivy"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          trivy --version
 
       # ── Trivy scan → SARIF (appears in GitHub Security → Code scanning) ───
       - name: Scan ${{ matrix.name }} with Trivy (SARIF)

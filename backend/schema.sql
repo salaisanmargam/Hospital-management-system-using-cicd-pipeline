@@ -56,8 +56,10 @@ CREATE TABLE IF NOT EXISTS vitals (
   heart_rate VARCHAR(10),
   temperature VARCHAR(10),
   spo2 VARCHAR(10),
+  recorded_by INT NULL COMMENT 'Nurse who recorded this entry',
   last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE
+  FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+  FOREIGN KEY (recorded_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS medicines (
@@ -163,4 +165,21 @@ CREATE TABLE IF NOT EXISTS doctor_profiles (
   bio TEXT,
   consultation_fee DECIMAL(10, 2),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS nurse_orders (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  patient_id   INT NOT NULL,
+  doctor_id    INT NOT NULL,
+  nurse_id     INT NULL COMMENT 'Assigned nurse (NULL = unassigned)',
+  order_type   ENUM('Medication','Observation','Procedure','Diet','Mobility','Other') NOT NULL,
+  instructions TEXT NOT NULL,
+  priority     ENUM('Normal','Urgent') DEFAULT 'Normal',
+  status       ENUM('Pending','In Progress','Completed','Cancelled') DEFAULT 'Pending',
+  notes        TEXT COMMENT 'Nurse acknowledgement / completion notes',
+  created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+  FOREIGN KEY (doctor_id)  REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (nurse_id)   REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Calendar as CalendarIcon, Clock, MoreVertical, Plus, CheckCircle, XCircle, AlertTriangle, X, ChevronRight, Stethoscope, Activity, Siren, User as UserIcon, FileText, CheckSquare, ArrowRightCircle, TestTube, Microscope, Pill, PackageCheck } from 'lucide-react';
+import ReactDOM from 'react-dom';
+import { Calendar as CalendarIcon, Clock, MoreVertical, Plus, CheckCircle, XCircle, AlertTriangle, X, ChevronRight, Stethoscope, Activity, Siren, User as UserIcon, FileText, CheckSquare, ArrowRightCircle, TestTube, Microscope, Pill, PackageCheck, History, Filter } from 'lucide-react';
 import { Appointment, AppointmentStatus, User, UserRole } from '../types';
 import { useData } from '../contexts/DataContext';
 
@@ -11,6 +12,8 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
   const { appointments, prescriptions, addAppointment, updateAppointmentStatus, updatePrescriptionStatus, staff } = useData();
 
   const [showBookingModal, setShowBookingModal] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [activeFilter, setActiveFilter] = useState<'All' | AppointmentStatus>('All');
   const [selectedDept, setSelectedDept] = useState('');
   const [selectedDoctor, setSelectedDoctor] = useState('');
   const [selectedSlot, setSelectedSlot] = useState('');
@@ -204,15 +207,36 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
 
   // DOCTOR & NURSE & LAB TECH TABLE VIEW
   if (isDoctor || isNurse || isLabTech) {
+    const filterOptions: Array<'All' | AppointmentStatus> = ['All', AppointmentStatus.SCHEDULED, AppointmentStatus.COMPLETED, AppointmentStatus.CANCELLED, AppointmentStatus.EMERGENCY];
+    const filteredAppointments = activeFilter === 'All'
+      ? displayedAppointments
+      : displayedAppointments.filter(a => a.status === activeFilter);
+
+    const filterColors: Record<string, string> = {
+      All: 'bg-slate-800 text-white',
+      Scheduled: 'bg-sky-500 text-white',
+      Completed: 'bg-emerald-500 text-white',
+      Cancelled: 'bg-slate-400 text-white',
+      Emergency: 'bg-red-500 text-white',
+    };
+    const filterInactive: Record<string, string> = {
+      All: 'text-slate-600 hover:bg-slate-100',
+      Scheduled: 'text-sky-600 hover:bg-sky-50',
+      Completed: 'text-emerald-600 hover:bg-emerald-50',
+      Cancelled: 'text-slate-500 hover:bg-slate-50',
+      Emergency: 'text-red-600 hover:bg-red-50',
+    };
+
     return (
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h2 className="text-2xl font-display font-bold text-slate-800">
-              {isDoctor ? 'My Consultation Schedule' : isLabTech ? 'Sample Collection Queue' : 'OPD Queue Management'}
+            <h2 className="text-2xl font-display font-bold text-slate-800 flex items-center gap-2">
+              <History size={22} className="text-sky-500" />
+              {isDoctor ? 'Appointment History' : isLabTech ? 'Sample Collection Queue' : 'OPD Queue Management'}
             </h2>
             <p className="text-slate-500">
-              {isDoctor ? 'Manage your patient visits for today.' : isLabTech ? 'Patients scheduled for blood draw and sample collection.' : 'Triaging and managing patient flow for doctors.'}
+              {isDoctor ? 'Full history of all your patient appointments.' : isLabTech ? 'Patients scheduled for blood draw and sample collection.' : 'Triaging and managing patient flow for doctors.'}
             </p>
           </div>
           {isNurse && (
@@ -225,22 +249,40 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
           )}
         </div>
 
+        {/* Filter tabs */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Filter size={15} className="text-slate-400" />
+          {filterOptions.map(f => (
+            <button
+              key={f}
+              onClick={() => setActiveFilter(f)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                activeFilter === f ? filterColors[f] : `bg-white border border-slate-200 ${filterInactive[f]}`
+              }`}
+            >
+              {f} {f !== 'All' && `(${displayedAppointments.filter(a => a.status === f).length})`}
+            </button>
+          ))}
+          <span className="ml-auto text-xs text-slate-400">{filteredAppointments.length} record{filteredAppointments.length !== 1 ? 's' : ''}</span>
+        </div>
+
         <div className="glass-card rounded-2xl overflow-hidden">
           <div className="p-4 border-b border-slate-200/50 bg-gradient-to-r from-slate-50 to-sky-50/30 flex justify-between items-center">
             <h3 className="font-display font-bold text-slate-800 flex items-center gap-2">
               {isLabTech ? <TestTube size={18} className="text-teal-600" /> : <Stethoscope size={18} className="text-teal-600" />}
-              {isDoctor ? 'My Appointments' : isLabTech ? "Today's Collection List" : "Today's Queue"}
+              {isDoctor ? 'All Appointments' : isLabTech ? "Today's Collection List" : "Today's Queue"}
             </h3>
             <span className="text-xs text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">
-              {displayedAppointments.length} Patients
+              {filteredAppointments.length} record{filteredAppointments.length !== 1 ? 's' : ''}
             </span>
           </div>
 
-          {displayedAppointments.length > 0 ? (
+          {filteredAppointments.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead className="bg-slate-50/80 text-slate-400 text-xs uppercase border-b border-slate-200/50 tracking-wider">
                   <tr>
+                    <th className="px-6 py-4">Date</th>
                     <th className="px-6 py-4">Time</th>
                     <th className="px-6 py-4">Patient Details</th>
                     {isNurse && <th className="px-6 py-4">Assigned Doctor</th>}
@@ -250,11 +292,17 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {displayedAppointments.map(apt => (
+                  {filteredAppointments.map(apt => (
                     <tr key={apt.id} className="hover:bg-sky-50/50 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
-                          <Clock size={16} className="text-slate-400" />
+                          <CalendarIcon size={14} className="text-slate-400" />
+                          <span className="text-sm text-slate-600">{apt.date}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <Clock size={14} className="text-slate-400" />
                           <span className="text-sm font-bold text-slate-800 font-mono">{apt.time}</span>
                         </div>
                       </td>
@@ -279,7 +327,7 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
                         <p className="text-sm text-slate-700 font-medium">{apt.type}</p>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium flex w-fit items-center gap-1 ${getStatusColor(apt.status)}`}>
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium flex w-fit items-center gap-1 border ${getStatusColor(apt.status)}`}>
                           {getStatusIcon(apt.status)}
                           {apt.status === AppointmentStatus.COMPLETED && isLabTech ? 'Collected' : apt.status}
                         </span>
@@ -294,7 +342,10 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
                               <CheckSquare size={14} /> {isLabTech ? 'Collect Sample' : 'Check In'}
                             </button>
                           )}
-                          <button className="text-teal-600 hover:text-teal-800 text-sm font-medium flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => setSelectedAppointment(apt)}
+                            className="text-teal-600 hover:text-teal-800 text-sm font-semibold flex items-center justify-end gap-1 hover:underline"
+                          >
                             {isNurse ? 'Triage' : 'Details'} <ChevronRight size={14} />
                           </button>
                         </div>
@@ -306,10 +357,122 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
             </div>
           ) : (
             <div className="p-12 text-center text-slate-400">
-              <p>No appointments found for today.</p>
+              <History size={28} className="mx-auto mb-3 text-slate-300" />
+              <p>No appointments found{activeFilter !== 'All' ? ` with status "${activeFilter}"` : ''}.</p>
             </div>
           )}
         </div>
+
+        {/* Appointment Detail Modal */}
+        {selectedAppointment && ReactDOM.createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in border border-slate-200/50">
+              {/* Header */}
+              <div className={`p-6 text-white flex justify-between items-center ${
+                selectedAppointment.status === AppointmentStatus.EMERGENCY
+                  ? 'bg-gradient-to-r from-red-600 to-orange-600'
+                  : selectedAppointment.status === AppointmentStatus.COMPLETED
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600'
+                  : 'bg-gradient-to-r from-slate-800 to-sky-900'
+              }`}>
+                <div>
+                  <h3 className="text-xl font-display font-bold">Appointment Details</h3>
+                  <p className="text-white/70 text-sm mt-0.5">Record #{selectedAppointment.id.toUpperCase()}</p>
+                </div>
+                <button onClick={() => setSelectedAppointment(null)} className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-5">
+                {/* Patient */}
+                <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <div className="w-12 h-12 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center">
+                    <UserIcon size={22} />
+                  </div>
+                  <div>
+                    <p className="font-display font-bold text-slate-900 text-lg">{selectedAppointment.patientName}</p>
+                    <p className="text-xs text-slate-500 font-mono">Patient ID: {selectedAppointment.patientId.toUpperCase()}</p>
+                  </div>
+                </div>
+
+                {/* Info grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Date</p>
+                    <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+                      <CalendarIcon size={14} className="text-sky-500" />{selectedAppointment.date}
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Time</p>
+                    <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+                      <Clock size={14} className="text-sky-500" />{selectedAppointment.time}
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Doctor</p>
+                    <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+                      <Stethoscope size={14} className="text-teal-500" />{selectedAppointment.doctorName}
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Department</p>
+                    <p className="text-sm font-semibold text-slate-800">{selectedAppointment.department}</p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 col-span-2">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Type</p>
+                    <p className="text-sm font-semibold text-slate-800">{selectedAppointment.type}</p>
+                  </div>
+                </div>
+
+                {/* Status — editable for doctors */}
+                <div className="p-4 rounded-xl border border-slate-200 bg-white">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Appointment Status</p>
+                  {isDoctor ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      {([AppointmentStatus.SCHEDULED, AppointmentStatus.COMPLETED, AppointmentStatus.CANCELLED, AppointmentStatus.EMERGENCY] as AppointmentStatus[]).map(s => (
+                        <button
+                          key={s}
+                          onClick={() => {
+                            updateAppointmentStatus(selectedAppointment.id, s);
+                            setSelectedAppointment({ ...selectedAppointment, status: s });
+                          }}
+                          className={`py-2.5 px-4 rounded-xl text-sm font-semibold border-2 transition-all ${
+                            selectedAppointment.status === s
+                              ? s === AppointmentStatus.COMPLETED ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                                : s === AppointmentStatus.CANCELLED ? 'border-slate-400 bg-slate-100 text-slate-600'
+                                : s === AppointmentStatus.EMERGENCY ? 'border-red-500 bg-red-50 text-red-700'
+                                : 'border-sky-500 bg-sky-50 text-sky-700'
+                              : 'border-slate-100 bg-slate-50 text-slate-400 hover:border-slate-300 hover:text-slate-600'
+                          }`}
+                        >
+                          <span className="flex items-center justify-center gap-1.5">
+                            {getStatusIcon(s)}{s}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className={`px-3 py-1.5 rounded-full text-sm font-semibold flex items-center w-fit gap-1 border ${getStatusColor(selectedAppointment.status)}`}>
+                      {getStatusIcon(selectedAppointment.status)}{selectedAppointment.status}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="px-6 pb-6">
+                <button
+                  onClick={() => setSelectedAppointment(null)}
+                  className="w-full py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
       </div>
     );
   }

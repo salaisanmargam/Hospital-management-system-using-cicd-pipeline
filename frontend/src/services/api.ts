@@ -341,3 +341,40 @@ export const upsertVitals = async (token: string, payload: any): Promise<any> =>
 
 export const listAuditLogs = async (token: string): Promise<any[]> =>
   request<any[]>('/audit-logs/', { method: 'GET', headers: authHeaders(token) });
+
+// ─── Nurse Orders ─────────────────────────────────────────────────────────────
+
+export const listNurseOrders = async (token: string): Promise<any[]> =>
+  request<any[]>('/nurse-orders/', { method: 'GET', headers: authHeaders(token) });
+
+export const createNurseOrder = async (token: string, payload: {
+  patient_id: number;
+  nurse_id?: number | null;
+  order_type: string;
+  instructions: string;
+  priority?: string;
+}): Promise<any> =>
+  request<any>('/nurse-orders/', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
+
+export const updateNurseOrderStatus = async (
+  token: string,
+  orderId: string,
+  status: string,
+  notes?: string,
+): Promise<any> =>
+  request<any>(`/nurse-orders/${orderId}/status`, {
+    method: 'PATCH',
+    headers: authHeaders(token),
+    body: JSON.stringify({ status, notes }),
+  });
+
+export const assignNurseToOrder = async (
+  token: string,
+  orderId: string,
+  nurseId: number,
+): Promise<any> =>
+  request<any>(`/nurse-orders/${orderId}/assign`, {
+    method: 'PATCH',
+    headers: authHeaders(token),
+    body: JSON.stringify({ nurse_id: nurseId }),
+  });

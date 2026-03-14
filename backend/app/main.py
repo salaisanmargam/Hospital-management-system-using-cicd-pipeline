@@ -30,6 +30,7 @@ from .routers import (  # noqa: E402
     bills,
     audit_logs,
     vitals,
+    nurse_orders,
 )
 
 @asynccontextmanager
@@ -67,3 +68,4 @@ app.include_router(prescriptions.router)
 app.include_router(bills.router)
 app.include_router(audit_logs.router)
 app.include_router(vitals.router)
+app.include_router(nurse_orders.router)

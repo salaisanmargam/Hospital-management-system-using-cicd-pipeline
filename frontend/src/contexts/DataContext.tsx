@@ -75,6 +75,8 @@ interface DataContextType {
   updateLabTestStatus: (id: string, status: LabTest['status']) => void;
   admitPatient: (bedId: string, patientId: string, patientName: string) => void;
   dischargePatient: (bedId: string) => void;
+  blockBedForMaintenance: (bedId: string) => void;
+  markBedReady: (bedId: string) => void;
   updateVitals: (patientId: string, vitals: Vitals) => void;
 }
 
@@ -86,7 +88,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [labTests, setLabTests] = useState<LabTest[]>([]);
-  const [beds, setBeds] = useState<Bed[]>([]);
+  const [beds, setBeds] = useState<Bed[]>(BEDS);
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
@@ -179,7 +181,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       if (Array.isArray(dbBeds)) {
-        setBeds(dbBeds.map(b => ({ ...b, id: String(b.id), number: b.bed_number, patientId: b.patient_id ? String(b.patient_id) : undefined, patientName: b.patient_name })));
+        const mapped = dbBeds.map(b => ({ ...b, id: String(b.id), number: b.bed_number, patientId: b.patient_id ? String(b.patient_id) : undefined, patientName: b.patient_name }));
+        // Deduplicate by (ward, number) — keep the occupied row if there's a conflict
+        const seen = new Map<string, typeof mapped[0]>();
+        for (const bed of mapped) {
+          const key = `${bed.ward}||${bed.number}`;
+          const existing = seen.get(key);
+          if (!existing || (!existing.patientId && bed.patientId)) seen.set(key, bed);
+        }
+        setBeds(Array.from(seen.values()));
       }
 
       if (Array.isArray(dbLabTests)) {
@@ -399,16 +409,38 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       // Find the patient before clearing the bed
       const bed = beds.find(b => b.id === bedId);
-      await updateBedStatus(token, bedId, 'Available');
+      await updateBedStatus(token, bedId, 'Maintenance');
       if (bed?.patientId) {
         await updatePatientStatus(token, bed.patientId, 'Outpatient');
       }
       await refreshAllData(token);
     } catch (err) {
       console.error('Failed to discharge patient:', err);
-      setBeds(prev => prev.map(b => b.id === bedId ? { ...b, status: 'Available', patientId: undefined, patientName: undefined } : b));
+      setBeds(prev => prev.map(b => b.id === bedId ? { ...b, status: 'Maintenance', patientId: undefined, patientName: undefined } : b));
     }
   }, [getToken, beds, refreshAllData]);
+
+  const blockBedForMaintenance = useCallback(async (bedId: string) => {
+    const token = getToken();
+    setBeds(prev => prev.map(b => b.id === bedId ? { ...b, status: 'Maintenance' } : b));
+    if (!token) return;
+    try {
+      await updateBedStatus(token, bedId, 'Maintenance');
+    } catch (err) {
+      console.error('Failed to block bed for maintenance:', err);
+    }
+  }, [getToken]);
+
+  const markBedReady = useCallback(async (bedId: string) => {
+    const token = getToken();
+    setBeds(prev => prev.map(b => b.id === bedId ? { ...b, status: 'Available' } : b));
+    if (!token) return;
+    try {
+      await updateBedStatus(token, bedId, 'Available');
+    } catch (err) {
+      console.error('Failed to mark bed as ready:', err);
+    }
+  }, [getToken]);
 
   const updateVitals = useCallback(async (patientId: string, newVitals: Vitals) => {
     const token = getToken();
@@ -453,6 +485,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       updateLabTestStatus,
       admitPatient,
       dischargePatient,
+      blockBedForMaintenance,
+      markBedReady,
       updateVitals
     }}>
       {children}

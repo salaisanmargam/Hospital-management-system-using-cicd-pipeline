@@ -19,6 +19,26 @@ export const Laboratory: React.FC<LaboratoryProps> = ({ user }) => {
   const [activeTab, setActiveTab] = useState<'All' | 'Pathology' | 'Radiology' | 'Microbiology' | 'Biochemistry'>('All');
 
   const isDoctor = user?.role === UserRole.DOCTOR;
+  const isLabTechnician = user?.role === UserRole.LAB_TECHNICIAN;
+
+  const normalizeDepartment = (value?: string) => {
+    if (!value) return undefined;
+
+    const departmentMap: Record<string, 'Pathology' | 'Radiology' | 'Microbiology' | 'Biochemistry'> = {
+      pathology: 'Pathology',
+      'pathology department': 'Pathology',
+      radiology: 'Radiology',
+      'radiology department': 'Radiology',
+      microbiology: 'Microbiology',
+      'microbiology department': 'Microbiology',
+      biochemistry: 'Biochemistry',
+      'biochemistry department': 'Biochemistry',
+    };
+
+    return departmentMap[value.trim().toLowerCase()];
+  };
+
+  const technicianDepartment = normalizeDepartment(user?.department);
 
   // TESTS MAPPING (Simulating Database of Tests -> Departments)
   const TEST_CATALOG: Record<string, 'Pathology' | 'Radiology' | 'Microbiology' | 'Biochemistry'> = {
@@ -39,15 +59,19 @@ export const Laboratory: React.FC<LaboratoryProps> = ({ user }) => {
     // 1. Role Filter
     if (isDoctor) {
       filtered = filtered.filter(test => test.doctorName === user?.name);
+    } else if (isLabTechnician) {
+      filtered = technicianDepartment
+        ? filtered.filter(test => test.department === technicianDepartment)
+        : [];
     }
 
-    // 2. Department Tab Filter (For Lab Techs)
-    if (!isDoctor && activeTab !== 'All') {
+    // 2. Department Tab Filter (Admin view)
+    if (!isDoctor && !isLabTechnician && activeTab !== 'All') {
       filtered = filtered.filter(test => test.department === activeTab);
     }
 
     return filtered;
-  }, [user, isDoctor, activeTab, labTests]);
+  }, [user, isDoctor, isLabTechnician, activeTab, labTests, technicianDepartment]);
 
   // For the dropdown in the modal
   const myPatients = useMemo(() => {
@@ -101,10 +125,16 @@ export const Laboratory: React.FC<LaboratoryProps> = ({ user }) => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h2 className="text-2xl font-display font-bold text-slate-800">
-            {isDoctor ? 'My Lab Requests' : 'Central Laboratory'}
+            {isDoctor ? 'My Lab Requests' : isLabTechnician ? `${technicianDepartment || 'Assigned'} Laboratory Queue` : 'Central Laboratory'}
           </h2>
           <p className="text-slate-500">
-            {isDoctor ? 'Prescribe tests and track results.' : 'Unified Lab Management System.'}
+            {isDoctor
+              ? 'Prescribe tests and track results.'
+              : isLabTechnician
+                ? technicianDepartment
+                  ? `Showing only ${technicianDepartment.toLowerCase()} requests assigned to your department.`
+                  : 'No supported laboratory department is assigned to this technician account.'
+                : 'Unified Lab Management System.'}
           </p>
         </div>
         <div className="flex gap-2">
@@ -130,7 +160,7 @@ export const Laboratory: React.FC<LaboratoryProps> = ({ user }) => {
           <div className="flex justify-between items-start">
             <div>
               <p className="text-slate-500 text-sm font-medium">
-                {isDoctor ? 'Pending Results' : `Pending (${activeTab === 'All' ? 'Total' : activeTab})`}
+                {isDoctor ? 'Pending Results' : isLabTechnician ? `Pending (${technicianDepartment || 'Assigned'})` : `Pending (${activeTab === 'All' ? 'Total' : activeTab})`}
               </p>
               <h3 className="text-2xl font-display font-bold text-slate-900 mt-2">{pendingCount}</h3>
             </div>
@@ -167,14 +197,21 @@ export const Laboratory: React.FC<LaboratoryProps> = ({ user }) => {
 
       <div className="glass-card rounded-2xl overflow-hidden">
         <div className="p-4 border-b border-slate-200/50 bg-gradient-to-r from-slate-50 to-sky-50/30 flex flex-col md:flex-row gap-4 items-center justify-between">
-          {/* LAB TECH DEPARTMENT TABS */}
-          {!isDoctor ? (
+          {/* ADMIN DEPARTMENT TABS */}
+          {!isDoctor && !isLabTechnician ? (
             <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 w-full md:w-auto no-scrollbar">
               <button onClick={() => setActiveTab('All')} className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition ${activeTab === 'All' ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}>All Labs</button>
               <button onClick={() => setActiveTab('Pathology')} className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition flex items-center gap-1 ${activeTab === 'Pathology' ? 'bg-teal-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}><Microscope size={14} /> Pathology</button>
               <button onClick={() => setActiveTab('Radiology')} className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition flex items-center gap-1 ${activeTab === 'Radiology' ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}><ScanLine size={14} /> Radiology</button>
               <button onClick={() => setActiveTab('Biochemistry')} className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition flex items-center gap-1 ${activeTab === 'Biochemistry' ? 'bg-purple-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}><TestTube size={14} /> Biochemistry</button>
               <button onClick={() => setActiveTab('Microbiology')} className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition flex items-center gap-1 ${activeTab === 'Microbiology' ? 'bg-amber-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}><FlaskConical size={14} /> Microbiology</button>
+            </div>
+          ) : isLabTechnician ? (
+            <div className="flex items-center gap-2 w-full md:w-auto">
+              <span className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-teal-600 text-white flex items-center gap-1.5">
+                <Microscope size={14} />
+                {technicianDepartment || 'Unassigned Department'}
+              </span>
             </div>
           ) : (
             <h3 className="font-bold text-slate-700">My Prescribed Tests</h3>
@@ -264,8 +301,9 @@ export const Laboratory: React.FC<LaboratoryProps> = ({ user }) => {
           ) : (
             <div className="p-12 text-center text-slate-400">
               <FlaskConical size={48} className="mx-auto mb-4 text-slate-200" />
-              <p>No lab requests found.</p>
-              {activeTab !== 'All' && !isDoctor && <p className="text-xs mt-1">Try switching to 'All Labs' or another department.</p>}
+              <p>{isLabTechnician ? 'No lab requests found for your department.' : 'No lab requests found.'}</p>
+              {!isDoctor && !isLabTechnician && activeTab !== 'All' && <p className="text-xs mt-1">Try switching to 'All Labs' or another department.</p>}
+              {isLabTechnician && !technicianDepartment && <p className="text-xs mt-1">Assign this technician to Pathology, Radiology, Microbiology, or Biochemistry.</p>}
             </div>
           )}
         </div>

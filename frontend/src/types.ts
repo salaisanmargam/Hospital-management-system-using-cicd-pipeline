@@ -141,3 +141,23 @@ export interface AuditLog {
   timestamp: string;
   details: string;
 }
+
+export type NurseOrderType = 'Medication' | 'Observation' | 'Procedure' | 'Diet' | 'Mobility' | 'Other';
+export type NurseOrderStatus = 'Pending' | 'In Progress' | 'Completed' | 'Cancelled';
+
+export interface NurseOrder {
+  id: string;
+  patient_id: string;
+  patient_name: string;
+  doctor_id: string;
+  doctor_name: string;
+  nurse_id?: string;
+  nurse_name?: string;
+  order_type: NurseOrderType;
+  instructions: string;
+  priority: 'Normal' | 'Urgent';
+  status: NurseOrderStatus;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}

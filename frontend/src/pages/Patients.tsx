@@ -1,30 +1,22 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { Plus, Search, Filter, Pencil, Trash2, User as UserIcon, X, Activity, FileText, Pill, Thermometer, Syringe, Stethoscope, Clipboard, CheckCircle2, Clock, AlertCircle, RefreshCw } from 'lucide-react';
-import { User, UserRole } from '../types';
-import { AUTH_STORAGE_KEY, updatePatient, deletePatient } from '../services/api';
+import { Plus, Search, Filter, Pencil, Trash2, User as UserIcon, X, Activity, FileText, Thermometer, Syringe, Stethoscope, Clipboard, CheckCircle2, Clock, AlertCircle, RefreshCw } from 'lucide-react';
+import { User, UserRole, NurseOrder, NurseOrderType } from '../types';
+import { AUTH_STORAGE_KEY, updatePatient, deletePatient, listNurseOrders, updateNurseOrderStatus, createNurseOrder } from '../services/api';
 import { useData } from '../contexts/DataContext';
 
 interface PatientsProps {
    user?: User;
 }
 
-interface NursingOrder {
-   id: string;
-   medication: string;
-   dosage: string;
-   type: 'Oral' | 'IV/Vial' | 'Injection';
-   timing: string;
-   status: 'Pending' | 'Administered';
-   prescribedBy: string;
-}
+
 
 export const Patients: React.FC<PatientsProps> = ({ user }) => {
    const { patients, appointments, beds, vitals, updateVitals, refreshPatients, isLoading } = useData();
    const [selectedPatient, setSelectedPatient] = useState<any | null>(null);
-   const [activeTab, setActiveTab] = useState<'overview' | 'vitals' | 'records'>('overview');
+   const [activeTab, setActiveTab] = useState<'overview' | 'vitals' | 'records' | 'orders'>('overview');
 
-   const [nurseTab, setNurseTab] = useState<'care' | 'meds' | 'notes'>('care');
+   const [nurseTab, setNurseTab] = useState<'care' | 'meds' | 'notes' | 'orders'>('orders');
    const [showNurseModal, setShowNurseModal] = useState(false);
 
    const isNurse = user?.role === UserRole.NURSE;
@@ -44,6 +36,8 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
       blood_type: '', allergies: '',
    });
 
+   const [editVitalsForm, setEditVitalsForm] = useState({ bp: '', heartRate: '', temperature: '', spO2: '' });
+
    const openEditPatient = (p: any) => {
       setEditingPatient(p);
       setEditPatientForm({
@@ -56,6 +50,13 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
          status: p.status as 'Outpatient' | 'Inpatient' || 'Outpatient',
          blood_type: p.blood_type || p.bloodType || '',
          allergies: p.allergies || '',
+      });
+      const pVitals = vitals[p.id];
+      setEditVitalsForm({
+         bp: pVitals?.bp || '',
+         heartRate: pVitals?.heartRate || '',
+         temperature: pVitals?.temperature || '',
+         spO2: pVitals?.spO2 || '',
       });
       setEditPatientMsg(null);
       setIsEditPatientOpen(true);
@@ -89,6 +90,15 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
             : { ...base, contact: editPatientForm.contact, status: editPatientForm.status };
 
          await updatePatient(token, editingPatient.id, payload);
+         if (isDoctor) {
+            await updateVitals(String(editingPatient.id), {
+               bp: editVitalsForm.bp,
+               heartRate: editVitalsForm.heartRate,
+               temperature: editVitalsForm.temperature,
+               spO2: editVitalsForm.spO2,
+               lastUpdated: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            });
+         }
          setEditPatientMsg({ type: 'success', text: 'Patient updated successfully.' });
          await refreshPatients();
          setTimeout(() => { setIsEditPatientOpen(false); setEditPatientMsg(null); }, 1800);
@@ -121,6 +131,84 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
    const [tempValue, setTempValue] = useState('');
    const [spo2Value, setSpo2Value] = useState('');
 
+   const [patientNurseOrders, setPatientNurseOrders] = useState<NurseOrder[]>([]);
+   const [loadingOrders, setLoadingOrders] = useState(false);
+   const [administeringId, setAdministeringId] = useState<string | null>(null);
+   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
+
+   const handleUpdateOrderStatus = async (orderId: string, newStatus: 'In Progress' | 'Completed') => {
+      setUpdatingOrderId(orderId);
+      try {
+         const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+         const token = stored ? JSON.parse(stored)?.token : null;
+         if (!token) return;
+         await updateNurseOrderStatus(token, orderId, newStatus);
+         const completedAt = new Date().toISOString();
+         setPatientNurseOrders(prev =>
+            prev.map(o =>
+               o.id === orderId ? { ...o, status: newStatus as any, updated_at: completedAt } : o
+            )
+         );
+      } finally { setUpdatingOrderId(null); }
+   };
+   const [showOrderForm, setShowOrderForm] = useState(false);
+   const [orderForm, setOrderForm] = useState({ order_type: 'Medication' as NurseOrderType, instructions: '', priority: 'Normal' as 'Normal' | 'Urgent' });
+   const [orderMsg, setOrderMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+   const [submittingOrder, setSubmittingOrder] = useState(false);
+
+   const fetchPatientOrders = async (patientId: string) => {
+      setLoadingOrders(true);
+      try {
+         const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+         const token = stored ? JSON.parse(stored)?.token : null;
+         if (!token) return;
+         const all = await listNurseOrders(token);
+         setPatientNurseOrders(all.filter((o: NurseOrder) => String(o.patient_id) === String(patientId)));
+      } catch { /* silently fail */ }
+      finally { setLoadingOrders(false); }
+   };
+
+   const handleAdminister = async (orderId: string) => {
+      setAdministeringId(orderId);
+      try {
+         const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+         const token = stored ? JSON.parse(stored)?.token : null;
+         if (!token) return;
+         await updateNurseOrderStatus(token, orderId, 'Completed');
+         setPatientNurseOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'Completed' as const } : o));
+      } finally { setAdministeringId(null); }
+   };
+
+   const handleCreateOrder = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!selectedPatient || !orderForm.instructions.trim()) return;
+      setSubmittingOrder(true);
+      setOrderMsg(null);
+      try {
+         const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+         const token = stored ? JSON.parse(stored)?.token : null;
+         if (!token) throw new Error('Not authenticated');
+         await createNurseOrder(token, {
+            patient_id: selectedPatient.id,
+            order_type: orderForm.order_type,
+            instructions: orderForm.instructions,
+            priority: orderForm.priority,
+         });
+         setOrderMsg({ type: 'success', text: 'Order sent to nursing team.' });
+         setOrderForm({ order_type: 'Medication', instructions: '', priority: 'Normal' });
+         setShowOrderForm(false);
+         await fetchPatientOrders(selectedPatient.id);
+      } catch (err: any) {
+         setOrderMsg({ type: 'error', text: err.message || 'Failed to create order.' });
+      } finally { setSubmittingOrder(false); }
+   };
+
+   useEffect(() => {
+      if (selectedPatient) {
+         fetchPatientOrders(selectedPatient.id);
+      }
+   }, [selectedPatient]);
+
    const handlePatientClick = (patient: any) => {
       setSelectedPatient(patient);
       const pVitals = vitals[patient.id];
@@ -131,7 +219,11 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
 
       if (isNurse) {
          setShowNurseModal(true);
-         setNurseTab('care');
+         setNurseTab('orders');
+      } else {
+         setActiveTab('overview');
+         setShowOrderForm(false);
+         setOrderMsg(null);
       }
    };
 
@@ -168,12 +260,6 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
       const bed = beds.find(b => b.patientName === patientName);
       return bed ? `${bed.ward} - Bed ${bed.number}` : 'No Bed Assigned';
    };
-
-   const mockNurseOrders: NursingOrder[] = [
-      { id: 'o1', medication: 'Morphine Sulfate', dosage: '4mg', type: 'IV/Vial', timing: 'Every 4 hours', status: 'Pending', prescribedBy: getAttendingDoctor(selectedPatient?.name || '') },
-      { id: 'o2', medication: 'Paracetamol', dosage: '500mg', type: 'Oral', timing: 'After lunch', status: 'Administered', prescribedBy: getAttendingDoctor(selectedPatient?.name || '') },
-      { id: 'o3', medication: 'Ceftriaxone', dosage: '1g', type: 'Injection', timing: 'Twice Daily', status: 'Pending', prescribedBy: getAttendingDoctor(selectedPatient?.name || '') },
-   ];
 
    return (
       <div className="space-y-6">
@@ -346,6 +432,19 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
                   <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
                      {/* Nurse Sidebar */}
                      <div className="w-full md:w-64 bg-slate-50 border-r border-slate-200 p-4 flex flex-col gap-1">
+                        {/* Doctor's Orders tab — shown first, highlighted when there are pending orders */}
+                        <button
+                           onClick={() => setNurseTab('orders')}
+                           className={`text-left px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-3 transition-all ${nurseTab === 'orders' ? 'bg-white shadow-md text-sky-700 border border-slate-100' : 'text-slate-600 hover:bg-white/60'}`}
+                        >
+                           <Clipboard size={18} className={patientNurseOrders.filter(o => o.status === 'Pending' || o.status === 'In Progress').length > 0 ? 'text-amber-500' : ''} />
+                           <span className="flex-1">Doctor's Orders</span>
+                           {patientNurseOrders.filter(o => o.status === 'Pending' || o.status === 'In Progress').length > 0 && (
+                              <span className="bg-amber-500 text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1.5">
+                                 {patientNurseOrders.filter(o => o.status === 'Pending' || o.status === 'In Progress').length}
+                              </span>
+                           )}
+                        </button>
                         <button
                            onClick={() => setNurseTab('care')}
                            className={`text-left px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-3 transition-all ${nurseTab === 'care' ? 'bg-white shadow-md text-sky-700 border border-slate-100' : 'text-slate-600 hover:bg-white/60'}`}
@@ -362,12 +461,125 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
                            onClick={() => setNurseTab('notes')}
                            className={`text-left px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-3 transition-all ${nurseTab === 'notes' ? 'bg-white shadow-md text-sky-700 border border-slate-100' : 'text-slate-600 hover:bg-white/60'}`}
                         >
-                           <Clipboard size={18} /> Nursing Notes
+                           <FileText size={18} /> Nursing Notes
                         </button>
                      </div>
 
                      {/* Main Content Area */}
                      <div className="flex-1 overflow-y-auto p-6 bg-white">
+
+                        {/* ── DOCTOR'S ORDERS TAB ── */}
+                        {nurseTab === 'orders' && (
+                           <div className="space-y-5 animate-fade-in">
+                              <div className="flex justify-between items-center">
+                                 <h3 className="text-lg font-display font-bold text-slate-800 flex items-center gap-2">
+                                    <Clipboard size={20} className="text-teal-500" />
+                                    Doctor's Orders
+                                 </h3>
+                                 <button
+                                    onClick={() => fetchPatientOrders(selectedPatient.id)}
+                                    disabled={loadingOrders}
+                                    className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-sky-600 px-3 py-1.5 bg-slate-100 hover:bg-sky-50 rounded-lg transition-all"
+                                 >
+                                    <RefreshCw size={13} className={loadingOrders ? 'animate-spin' : ''} />
+                                    Refresh
+                                 </button>
+                              </div>
+
+                              {loadingOrders ? (
+                                 <div className="text-center py-12 text-slate-400">
+                                    <RefreshCw size={24} className="mx-auto mb-2 animate-spin text-slate-300" />
+                                    Loading orders...
+                                 </div>
+                              ) : patientNurseOrders.length === 0 ? (
+                                 <div className="text-center py-14 text-slate-400">
+                                    <Clipboard size={32} className="mx-auto mb-3 text-slate-300" />
+                                    <p className="font-semibold">No orders yet.</p>
+                                    <p className="text-xs mt-1">When a doctor issues orders they will appear here.</p>
+                                 </div>
+                              ) : (
+                                 <div className="space-y-3">
+                                    {patientNurseOrders.map(order => {
+                                       const orderedAt = new Date(order.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                                       const updatedAt = new Date(order.updated_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                                       const typeColors: Record<string, string> = {
+                                          Medication: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+                                          Observation: 'bg-sky-100 text-sky-700 border-sky-200',
+                                          Procedure: 'bg-amber-100 text-amber-700 border-amber-200',
+                                          Diet: 'bg-lime-100 text-lime-700 border-lime-200',
+                                          Mobility: 'bg-violet-100 text-violet-700 border-violet-200',
+                                          Other: 'bg-slate-100 text-slate-600 border-slate-200',
+                                       };
+                                       return (
+                                          <div
+                                             key={order.id}
+                                             className={`rounded-2xl border p-5 transition-all ${order.status === 'Completed' ? 'bg-emerald-50/60 border-emerald-200' : order.status === 'Cancelled' ? 'bg-slate-50 border-slate-200 opacity-60' : order.priority === 'Urgent' ? 'bg-red-50/60 border-red-200 shadow-sm' : 'bg-white border-slate-200 hover:shadow-md hover:border-sky-200'}`}
+                                          >
+                                             {/* Top row: type + priority + status */}
+                                             <div className="flex flex-wrap items-center gap-2 mb-3">
+                                                <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${typeColors[order.order_type] || typeColors.Other}`}>
+                                                   {order.order_type}
+                                                </span>
+                                                {order.priority === 'Urgent' && (
+                                                   <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200 flex items-center gap-1">
+                                                      <AlertCircle size={10} /> Urgent
+                                                   </span>
+                                                )}
+                                                <span className={`ml-auto text-xs font-semibold px-2.5 py-0.5 rounded-full ${order.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' : order.status === 'In Progress' ? 'bg-amber-100 text-amber-700' : order.status === 'Cancelled' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                   {order.status}
+                                                </span>
+                                             </div>
+
+                                             {/* Instructions */}
+                                             <p className="text-sm font-semibold text-slate-800 leading-snug mb-3">{order.instructions}</p>
+
+                                             {/* Meta row */}
+                                             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400 mb-4">
+                                                <span className="flex items-center gap-1"><Stethoscope size={11} /> {order.doctor_name}</span>
+                                                <span className="flex items-center gap-1"><Clock size={11} /> Ordered: {orderedAt}</span>
+                                                {order.status === 'Completed' && (
+                                                   <span className="flex items-center gap-1 text-emerald-600 font-medium"><CheckCircle2 size={11} /> Executed: {updatedAt}</span>
+                                                )}
+                                                {order.status === 'In Progress' && (
+                                                   <span className="flex items-center gap-1 text-amber-600 font-medium"><Clock size={11} /> Started: {updatedAt}</span>
+                                                )}
+                                             </div>
+
+                                             {/* Action buttons */}
+                                             {order.status === 'Pending' && (
+                                                <button
+                                                   onClick={() => handleUpdateOrderStatus(order.id, 'In Progress')}
+                                                   disabled={updatingOrderId === order.id}
+                                                   className="w-full py-2.5 rounded-xl text-sm font-semibold bg-amber-500 hover:bg-amber-600 text-white transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
+                                                >
+                                                   {updatingOrderId === order.id ? <RefreshCw size={15} className="animate-spin" /> : <Activity size={15} />}
+                                                   {updatingOrderId === order.id ? 'Updating...' : 'Start Order'}
+                                                </button>
+                                             )}
+                                             {order.status === 'In Progress' && (
+                                                <button
+                                                   onClick={() => handleUpdateOrderStatus(order.id, 'Completed')}
+                                                   disabled={updatingOrderId === order.id}
+                                                   className="w-full py-2.5 rounded-xl text-sm font-semibold bg-emerald-500 hover:bg-emerald-600 text-white transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
+                                                >
+                                                   {updatingOrderId === order.id ? <RefreshCw size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+                                                   {updatingOrderId === order.id ? 'Saving...' : 'Mark as Executed'}
+                                                </button>
+                                             )}
+                                             {order.status === 'Completed' && (
+                                                <div className="flex items-center gap-2 py-2 px-3 bg-emerald-100 rounded-xl text-xs font-semibold text-emerald-700">
+                                                   <CheckCircle2 size={15} />
+                                                   Executed at {updatedAt}
+                                                </div>
+                                             )}
+                                          </div>
+                                       );
+                                    })}
+                                 </div>
+                              )}
+                           </div>
+                        )}
+
                         {nurseTab === 'care' && (
                            <div className="space-y-6 animate-fade-in">
                               <div className="flex justify-between items-center mb-4">
@@ -435,34 +647,56 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
                               </div>
 
                               <div className="space-y-3">
-                                 {mockNurseOrders.map((order) => (
-                                    <div key={order.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-5 border border-slate-200 rounded-2xl hover:shadow-md hover:border-sky-200 transition-all bg-white group">
-                                       <div className="flex items-start gap-4 mb-3 sm:mb-0">
-                                          <div className={`p-3 rounded-xl ${order.type === 'IV/Vial' ? 'bg-gradient-to-br from-purple-500 to-indigo-500 text-white shadow-lg shadow-purple-500/20' : order.type === 'Injection' ? 'bg-gradient-to-br from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/20' : 'bg-gradient-to-br from-sky-500 to-teal-500 text-white shadow-lg shadow-sky-500/20'}`}>
-                                             {order.type === 'IV/Vial' || order.type === 'Injection' ? <Syringe size={22} /> : <Pill size={22} />}
-                                          </div>
-                                          <div>
-                                             <h4 className="font-display font-bold text-slate-800">{order.medication}</h4>
-                                             <p className="text-sm text-slate-600">{order.dosage} • {order.type}</p>
-                                             <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
-                                                <span className="flex items-center gap-1"><Clock size={12} /> {order.timing}</span>
-                                                <span className="flex items-center gap-1"><Stethoscope size={12} /> Ordered by: {order.prescribedBy}</span>
+                                 {loadingOrders ? (
+                                    <div className="text-center py-8 text-slate-400">
+                                       <RefreshCw size={22} className="mx-auto mb-2 animate-spin text-slate-300" />
+                                       Loading orders...
+                                    </div>
+                                 ) : patientNurseOrders.filter(o => o.order_type === 'Medication').length === 0 ? (
+                                    <div className="text-center py-10 text-slate-400">
+                                       <Syringe size={28} className="mx-auto mb-2 text-slate-300" />
+                                       <p className="font-medium">No medication orders found.</p>
+                                       <p className="text-xs mt-1">Orders will appear when a doctor prescribes medications.</p>
+                                    </div>
+                                 ) : (
+                                    patientNurseOrders.filter(o => o.order_type === 'Medication').map((order) => (
+                                       <div key={order.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-5 border border-slate-200 rounded-2xl hover:shadow-md hover:border-sky-200 transition-all bg-white group">
+                                          <div className="flex items-start gap-4 mb-3 sm:mb-0">
+                                             <div className={`p-3 rounded-xl flex-shrink-0 ${order.priority === 'Urgent' ? 'bg-gradient-to-br from-red-500 to-orange-500 text-white shadow-lg shadow-red-500/20' : 'bg-gradient-to-br from-sky-500 to-teal-500 text-white shadow-lg shadow-sky-500/20'}`}>
+                                                <Syringe size={22} />
+                                             </div>
+                                             <div>
+                                                <h4 className="font-display font-bold text-slate-800">{order.instructions}</h4>
+                                                <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-slate-400">
+                                                   <span className={`px-2 py-0.5 rounded-full font-semibold ${order.priority === 'Urgent' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>{order.priority}</span>
+                                                   <span className="flex items-center gap-1"><Stethoscope size={12} /> Ordered by: {order.doctor_name}</span>
+                                                   <span className="flex items-center gap-1"><Clock size={12} /> {new Date(order.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                                   {order.status === 'Completed' && (
+                                                      <span className="flex items-center gap-1 text-emerald-600 font-semibold"><CheckCircle2 size={12} /> Done: {new Date(order.updated_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                                   )}
+                                                </div>
                                              </div>
                                           </div>
-                                       </div>
 
-                                       {order.status === 'Pending' ? (
-                                          <button className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-slate-800 to-slate-900 text-white rounded-xl text-sm font-semibold hover:from-sky-600 hover:to-teal-600 transition-all flex items-center justify-center gap-2 shadow-lg hover:shadow-sky-500/20">
-                                             Administer
-                                          </button>
-                                       ) : (
-                                          <button disabled className="w-full sm:w-auto px-5 py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 cursor-default">
-                                             <CheckCircle2 size={16} />
-                                             Given
-                                          </button>
-                                       )}
-                                    </div>
-                                 ))}
+                                          {order.status === 'Completed' ? (
+                                             <button disabled className="w-full sm:w-auto px-5 py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 cursor-default">
+                                                <CheckCircle2 size={16} />
+                                                Given
+                                             </button>
+                                          ) : order.status === 'Cancelled' ? (
+                                             <span className="w-full sm:w-auto px-5 py-2.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-sm font-semibold flex items-center justify-center">Cancelled</span>
+                                          ) : (
+                                             <button
+                                                onClick={() => handleAdminister(order.id)}
+                                                disabled={administeringId === order.id}
+                                                className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-slate-800 to-slate-900 text-white rounded-xl text-sm font-semibold hover:from-sky-600 hover:to-teal-600 transition-all flex items-center justify-center gap-2 shadow-lg hover:shadow-sky-500/20 disabled:opacity-50"
+                                             >
+                                                {administeringId === order.id ? 'Saving...' : 'Administer'}
+                                             </button>
+                                          )}
+                                       </div>
+                                    ))
+                                 )}
                               </div>
                            </div>
                         )}
@@ -470,7 +704,7 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
                         {nurseTab === 'notes' && (
                            <div className="h-full flex flex-col animate-fade-in">
                               <h3 className="text-lg font-display font-bold text-slate-800 flex items-center gap-2 mb-4">
-                                 <Clipboard size={20} className="text-teal-500" />
+                                 <FileText size={20} className="text-teal-500" />
                                  Shift Notes
                               </h3>
 
@@ -564,6 +798,33 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
                               <input type="text" value={editPatientForm.medical_condition} onChange={e => setEditPatientForm(f => ({ ...f, medical_condition: e.target.value }))} className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-teal-500" />
                            </div>
                         )}
+                        {/* Vitals – Doctor editable */}
+                        {isDoctor && (
+                           <div className="sm:col-span-2">
+                              <div className="mt-1 mb-3 flex items-center gap-2">
+                                 <Activity size={15} className="text-sky-500" />
+                                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Patient Vitals</span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                 <div>
+                                    <label className="block text-xs font-semibold text-slate-400 mb-1">Blood Pressure (mmHg)</label>
+                                    <input type="text" value={editVitalsForm.bp} onChange={e => setEditVitalsForm(f => ({ ...f, bp: e.target.value }))} placeholder="120/80" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-sky-400" />
+                                 </div>
+                                 <div>
+                                    <label className="block text-xs font-semibold text-slate-400 mb-1">Heart Rate (bpm)</label>
+                                    <input type="text" value={editVitalsForm.heartRate} onChange={e => setEditVitalsForm(f => ({ ...f, heartRate: e.target.value }))} placeholder="72" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-red-400" />
+                                 </div>
+                                 <div>
+                                    <label className="block text-xs font-semibold text-slate-400 mb-1">Temperature (°F)</label>
+                                    <input type="text" value={editVitalsForm.temperature} onChange={e => setEditVitalsForm(f => ({ ...f, temperature: e.target.value }))} placeholder="98.6" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-amber-400" />
+                                 </div>
+                                 <div>
+                                    <label className="block text-xs font-semibold text-slate-400 mb-1">SpO2 (%)</label>
+                                    <input type="text" value={editVitalsForm.spO2} onChange={e => setEditVitalsForm(f => ({ ...f, spO2: e.target.value }))} placeholder="98" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                                 </div>
+                              </div>
+                           </div>
+                        )}
                         {/* Receptionist / Admin editable */}
                         {(isAdmin || isReceptionist) && (
                            <div className={isAdmin ? '' : 'sm:col-span-2'}>
@@ -611,13 +872,14 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
                            </div>
                         </div>
                      </div>
-                     <button onClick={() => setSelectedPatient(null)} className="text-slate-400 hover:text-slate-600 p-2 hover:bg-slate-100 rounded-lg transition-all"><X size={22} /></button>
+                     <button onClick={() => { setSelectedPatient(null); setShowOrderForm(false); setOrderMsg(null); }} className="text-slate-400 hover:text-slate-600 p-2 hover:bg-slate-100 rounded-lg transition-all"><X size={22} /></button>
                   </div>
 
                   <div className="flex border-b border-slate-200 bg-white">
                      <button onClick={() => setActiveTab('overview')} className={`px-6 py-3 text-sm font-medium transition-all ${activeTab === 'overview' ? 'border-b-2 border-sky-500 text-sky-700' : 'text-slate-500 hover:text-slate-700'}`}>Overview</button>
                      <button onClick={() => setActiveTab('vitals')} className={`px-6 py-3 text-sm font-medium transition-all ${activeTab === 'vitals' ? 'border-b-2 border-sky-500 text-sky-700' : 'text-slate-500 hover:text-slate-700'}`}>Vitals & Nursing</button>
                      <button onClick={() => setActiveTab('records')} className={`px-6 py-3 text-sm font-medium transition-all ${activeTab === 'records' ? 'border-b-2 border-sky-500 text-sky-700' : 'text-slate-500 hover:text-slate-700'}`}>Medical Records</button>
+                     {isDoctor && <button onClick={() => setActiveTab('orders')} className={`px-6 py-3 text-sm font-medium transition-all ${activeTab === 'orders' ? 'border-b-2 border-sky-500 text-sky-700' : 'text-slate-500 hover:text-slate-700'}`}>Nurse Orders</button>}
                   </div>
 
                   <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
@@ -679,6 +941,116 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
                                  </div>
                               </div>
                            </div>
+                        </div>
+                     )}
+
+                     {activeTab === 'orders' && isDoctor && (
+                        <div className="space-y-5 animate-fade-in">
+                           <div className="flex justify-between items-center">
+                              <h3 className="font-display font-bold text-slate-800 flex items-center gap-2">
+                                 <Clipboard size={18} className="text-teal-500" />
+                                 Nursing Care Orders
+                              </h3>
+                              <button
+                                 onClick={() => { setShowOrderForm(v => !v); setOrderMsg(null); }}
+                                 className="flex items-center gap-2 bg-gradient-to-r from-sky-500 to-teal-500 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:from-sky-600 hover:to-teal-600 transition-all shadow-lg shadow-sky-500/20"
+                              >
+                                 <Plus size={16} />
+                                 New Order
+                              </button>
+                           </div>
+
+                           {showOrderForm && (
+                              <form onSubmit={handleCreateOrder} className="bg-sky-50 border border-sky-200 rounded-2xl p-5 space-y-4">
+                                 <h4 className="font-semibold text-sky-800 text-sm">Create Nursing Order for {selectedPatient?.name}</h4>
+                                 {orderMsg && (
+                                    <div className={`p-3 rounded-xl text-sm ${orderMsg.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>{orderMsg.text}</div>
+                                 )}
+                                 <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                       <label className="block text-xs font-semibold text-slate-500 mb-1">Order Type</label>
+                                       <select
+                                          value={orderForm.order_type}
+                                          onChange={e => setOrderForm(f => ({ ...f, order_type: e.target.value as NurseOrderType }))}
+                                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-1 focus:ring-sky-400"
+                                       >
+                                          {(['Medication', 'Observation', 'Procedure', 'Diet', 'Mobility', 'Other'] as NurseOrderType[]).map(t => (
+                                             <option key={t} value={t}>{t}</option>
+                                          ))}
+                                       </select>
+                                    </div>
+                                    <div>
+                                       <label className="block text-xs font-semibold text-slate-500 mb-1">Priority</label>
+                                       <select
+                                          value={orderForm.priority}
+                                          onChange={e => setOrderForm(f => ({ ...f, priority: e.target.value as 'Normal' | 'Urgent' }))}
+                                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-1 focus:ring-sky-400"
+                                       >
+                                          <option value="Normal">Normal</option>
+                                          <option value="Urgent">Urgent</option>
+                                       </select>
+                                    </div>
+                                 </div>
+                                 <div>
+                                    <label className="block text-xs font-semibold text-slate-500 mb-1">Instructions</label>
+                                    <textarea
+                                       required
+                                       value={orderForm.instructions}
+                                       onChange={e => setOrderForm(f => ({ ...f, instructions: e.target.value }))}
+                                       placeholder="e.g., Morphine 4mg IV every 4 hours for pain management"
+                                       className="w-full p-3 border border-slate-200 rounded-lg text-sm h-20 resize-none focus:outline-none focus:ring-1 focus:ring-sky-400"
+                                    />
+                                 </div>
+                                 <div className="flex gap-3 justify-end">
+                                    <button type="button" onClick={() => setShowOrderForm(false)} className="px-4 py-2 text-slate-600 border border-slate-200 rounded-xl text-sm font-medium hover:bg-slate-50 transition">Cancel</button>
+                                    <button type="submit" disabled={submittingOrder} className="bg-gradient-to-r from-sky-500 to-teal-500 text-white px-5 py-2 rounded-xl text-sm font-semibold hover:from-sky-600 hover:to-teal-600 transition-all disabled:opacity-50">
+                                       {submittingOrder ? 'Sending...' : 'Send Order'}
+                                    </button>
+                                 </div>
+                              </form>
+                           )}
+
+                           {loadingOrders ? (
+                              <div className="text-center py-8 text-slate-400">
+                                 <RefreshCw size={22} className="mx-auto mb-2 animate-spin text-slate-300" />
+                                 Loading orders...
+                              </div>
+                           ) : patientNurseOrders.length === 0 ? (
+                              <div className="text-center py-10 text-slate-400">
+                                 <Clipboard size={28} className="mx-auto mb-2 text-slate-300" />
+                                 <p className="font-medium">No nurse orders yet.</p>
+                                 <p className="text-xs mt-1">Create an order above to instruct the nursing team.</p>
+                              </div>
+                           ) : (
+                              <div className="space-y-3">
+                                 {patientNurseOrders.map(order => (
+                                    <div key={order.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+                                       <div className="flex justify-between items-start gap-3">
+                                          <div className="flex items-start gap-3 min-w-0">
+                                             <span className={`mt-0.5 flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold uppercase ${order.order_type === 'Medication' ? 'bg-indigo-100 text-indigo-700' : order.order_type === 'Observation' ? 'bg-sky-100 text-sky-700' : order.order_type === 'Procedure' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                {order.order_type}
+                                             </span>
+                                             <div className="min-w-0">
+                                                <p className="text-sm font-medium text-slate-800">{order.instructions}</p>
+                                                <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-slate-400">
+                                                   {order.nurse_name ? <span>Assigned to: {order.nurse_name}</span> : <span className="italic">Unassigned</span>}
+                                                   <span>{new Date(order.created_at).toLocaleDateString()}</span>
+                                                </div>
+                                             </div>
+                                          </div>
+                                          <div className="flex items-center gap-2 flex-shrink-0">
+                                             {order.priority === 'Urgent' && (
+                                                <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-semibold">Urgent</span>
+                                             )}
+                                             <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${order.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' : order.status === 'Cancelled' ? 'bg-rose-100 text-rose-700' : order.status === 'In Progress' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                {order.status}
+                                             </span>
+                                          </div>
+                                       </div>
+                                    </div>
+                                 ))}
+                              </div>
+                           )}
                         </div>
                      )}
                   </div>

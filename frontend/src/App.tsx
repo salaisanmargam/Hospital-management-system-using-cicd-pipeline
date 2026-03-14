@@ -11,6 +11,7 @@ import { Laboratory } from './pages/Laboratory';
 import { Pharmacy } from './pages/Pharmacy';
 import { Ward } from './pages/Ward';
 import { AdminPanel } from './pages/AdminPanel';
+import { NurseOrders } from './pages/NurseOrders';
 import { User, UserRole } from './types';
 import { DataProvider, useData } from './contexts/DataContext';
 import { AUTH_STORAGE_KEY, getCurrentUser } from './services/api';
@@ -92,6 +93,7 @@ const AppContent: React.FC = () => {
       'dashboard': ['all'],
       'patients': [UserRole.ADMIN, UserRole.DOCTOR, UserRole.NURSE, UserRole.RECEPTIONIST],
       'ward': [UserRole.ADMIN, UserRole.NURSE, UserRole.RECEPTIONIST],
+      'nurse-orders': [UserRole.NURSE],
       'staff': [UserRole.ADMIN],
       'appointments': ['all'],
       'laboratory': [UserRole.ADMIN, UserRole.DOCTOR, UserRole.LAB_TECHNICIAN],
@@ -124,6 +126,8 @@ const AppContent: React.FC = () => {
         return <Pharmacy user={user} />;
       case 'ward':
         return <Ward user={user} />;
+      case 'nurse-orders':
+        return <NurseOrders user={user} />;
       case 'admin':
         return <AdminPanel />;
       default:

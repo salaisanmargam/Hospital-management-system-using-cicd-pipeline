@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   LayoutDashboard, 
   Users, 
@@ -12,9 +12,11 @@ import {
   FlaskConical,
   Pill,
   Shield,
-  BedDouble
+  BedDouble,
+  ClipboardList
 } from 'lucide-react';
 import { UserRole } from '../types';
+import { AUTH_STORAGE_KEY, listNurseOrders } from '../services/api';
 
 interface SidebarProps {
   activePage: string;
@@ -24,10 +26,29 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate, userRole, onLogout }) => {
+  const [pendingOrderCount, setPendingOrderCount] = useState(0);
+
+  useEffect(() => {
+    if (userRole !== UserRole.NURSE) return;
+    const load = async () => {
+      try {
+        const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+        const token = stored ? JSON.parse(stored)?.token : null;
+        if (!token) return;
+        const orders = await listNurseOrders(token);
+        setPendingOrderCount(orders.filter((o: any) => o.status === 'Pending' || o.status === 'In Progress').length);
+      } catch {}
+    };
+    load();
+    const interval = setInterval(load, 30000);
+    return () => clearInterval(interval);
+  }, [userRole]);
+
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} />, allowed: ['all'] },
     { id: 'patients', label: 'Patients', icon: <Users size={20} />, allowed: [UserRole.ADMIN, UserRole.DOCTOR, UserRole.NURSE, UserRole.RECEPTIONIST] },
-    { id: 'ward', label: 'Ward & Beds', icon: <BedDouble size={20} />, allowed: [UserRole.ADMIN, UserRole.NURSE, UserRole.RECEPTIONIST] },
+    { id: 'ward', label: 'Ward & Beds', icon: <BedDouble size={20} />, allowed: [UserRole.ADMIN, UserRole.DOCTOR, UserRole.NURSE, UserRole.RECEPTIONIST] },
+    { id: 'nurse-orders', label: "Doctor's Orders", icon: <ClipboardList size={20} />, allowed: [UserRole.NURSE] },
     { id: 'staff', label: 'Staff', icon: <Stethoscope size={20} />, allowed: [UserRole.ADMIN, UserRole.DOCTOR, UserRole.NURSE, UserRole.RECEPTIONIST] },
     { id: 'appointments', label: 'Appointments', icon: <Calendar size={20} />, allowed: ['all'] },
     { id: 'laboratory', label: 'Laboratory', icon: <FlaskConical size={20} />, allowed: [UserRole.ADMIN, UserRole.DOCTOR, UserRole.LAB_TECHNICIAN] },
@@ -76,7 +97,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate, userRo
             }`}>
               {item.icon}
             </span>
-            <span className="relative z-10">{item.label}</span>
+            <span className="relative z-10 flex-1 text-left">{item.label}</span>
+            {item.id === 'nurse-orders' && pendingOrderCount > 0 && (
+              <span className="bg-amber-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 shadow-sm">
+                {pendingOrderCount}
+              </span>
+            )}
             {activePage === item.id && (
               <span className="ml-auto w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse-glow shadow-lg shadow-sky-400/50"></span>
             )}
