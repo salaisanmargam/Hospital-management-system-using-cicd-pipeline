@@ -60,7 +60,7 @@ jobs:
         with:
           images: ${{ steps.img.outputs.name }}
           tags: |
-            type=sha,prefix=
+            type=raw,value=${{ github.sha }}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Set up Docker Buildx
