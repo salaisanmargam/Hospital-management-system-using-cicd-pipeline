@@ -8,6 +8,7 @@ on:
   workflow_dispatch:  # allow manual triggers from the GitHub UI
 
 permissions:
+  actions: read
   contents: read
   packages: write
   security-events: write
