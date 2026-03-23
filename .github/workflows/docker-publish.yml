@@ -8,11 +8,8 @@ name: Docker – Build & Push to GHCR
 #   ghcr.io/<owner>/hospital-management-system-frontend:<sha> (and :latest on main)
 
 on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
   workflow_call:
+  workflow_dispatch:
 
 concurrency:
   group: docker-publish-${{ github.ref }}

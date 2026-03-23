@@ -114,6 +114,14 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
+      - name: Post-deploy smoke test (frontend + API)
+        run: |
+          URL="${{ steps.vercel-deploy.outputs.deploymentUrl }}"
+          echo "Smoke testing $URL"
+          curl -fsSL "$URL" >/dev/null
+          curl -fsSL "$URL/api/health" >/dev/null
+          echo "Smoke test passed"
+
       # Post deployment URL as a PR comment (handy for preview deployments)
       - name: Comment deployment URL on PR
         if: github.event_name == 'pull_request'

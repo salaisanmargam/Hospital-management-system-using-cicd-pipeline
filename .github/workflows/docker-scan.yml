@@ -1,27 +1,25 @@
-name: Docker – Build & Scan
+name: Docker – Scan Published Images
 
-# Builds both images and scans them with Trivy.
+# Scans published GHCR images for this commit SHA with Trivy.
 # CRITICAL CVEs with available fixes will fail the job.
 # Results are uploaded to the GitHub Security tab (SARIF).
 
 on:
-  push:
-    branches: ["main"]
-  pull_request:
-    branches: ["main"]
   workflow_call:
+  workflow_dispatch:
 
 concurrency:
   group: docker-scan-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build-and-scan:
-    name: Build & scan (${{ matrix.name }})
+  scan-published-images:
+    name: Scan published image (${{ matrix.name }})
     runs-on: ubuntu-latest
 
     permissions:
       contents: read
+      packages: read
       security-events: write   # required to upload SARIF to GitHub Security tab
 
     strategy:
@@ -29,27 +27,30 @@ jobs:
       matrix:
         include:
           - name: backend
-            dockerfile: Dockerfile.backend
-            image: medcore-backend
-            build-args: ""
+            image_suffix: backend
 
           - name: frontend
-            dockerfile: Dockerfile.frontend
-            image: medcore-frontend
-            build-args: "--build-arg VITE_API_URL=/api"
+            image_suffix: frontend
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ── Build image ────────────────────────────────────────────────────────
-      - name: Build ${{ matrix.name }} image
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve image reference
+        id: image
         run: |
-          docker build \
-            -f ${{ matrix.dockerfile }} \
-            ${{ matrix.build-args }} \
-            -t ${{ matrix.image }}:ci \
-            .
+          REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "ref=ghcr.io/${REPO}-${{ matrix.image_suffix }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Pull image
+        run: docker pull "${{ steps.image.outputs.ref }}"
 
       # ── Install Trivy from a fixed release tarball to avoid the install.sh
       #    GitHub tag lookup that intermittently fails in CI.
@@ -72,7 +73,7 @@ jobs:
             --vuln-type os,library \
             --severity CRITICAL,HIGH \
             --ignore-unfixed \
-            ${{ matrix.image }}:ci
+            "${{ steps.image.outputs.ref }}"
 
       - name: Upload ${{ matrix.name }} SARIF to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v4
@@ -91,4 +92,4 @@ jobs:
             --severity CRITICAL \
             --ignore-unfixed \
             --exit-code 1 \
-            ${{ matrix.image }}:ci
+            "${{ steps.image.outputs.ref }}"
