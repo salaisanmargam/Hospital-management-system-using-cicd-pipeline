@@ -74,6 +74,7 @@ jobs:
 
       - name: Upload ${{ matrix.name }} SARIF to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v4
+        continue-on-error: true
         if: always() && hashFiles(format('trivy-{0}.sarif', matrix.name)) != ''
         with:
           sarif_file: trivy-${{ matrix.name }}.sarif
