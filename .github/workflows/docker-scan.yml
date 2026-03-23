@@ -53,7 +53,7 @@ jobs:
         run: docker pull "${{ steps.image.outputs.ref }}"
 
       - name: Install Trivy
-        uses: aquasecurity/setup-trivy@v0.2.2
+        uses: aquasecurity/setup-trivy@v0.2.6
         with:
           trivy-version: latest
 
