@@ -52,17 +52,13 @@ jobs:
       - name: Pull image
         run: docker pull "${{ steps.image.outputs.ref }}"
 
-      # ── Install Trivy from a fixed release tarball to avoid the install.sh
-      #    GitHub tag lookup that intermittently fails in CI.
       - name: Install Trivy
-        run: |
-          mkdir -p "$HOME/.local/bin"
-          curl -sfL https://github.com/aquasecurity/trivy/releases/download/v0.60.0/trivy_0.60.0_Linux-64bit.tar.gz \
-            -o trivy.tar.gz
-          tar -xzf trivy.tar.gz trivy
-          install -m 0755 trivy "$HOME/.local/bin/trivy"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          trivy --version
+        uses: aquasecurity/setup-trivy@v0.2.2
+        with:
+          trivy-version: latest
+
+      - name: Verify Trivy
+        run: trivy --version
 
       # ── Trivy scan → SARIF (appears in GitHub Security → Code scanning) ───
       - name: Scan ${{ matrix.name }} with Trivy (SARIF)
