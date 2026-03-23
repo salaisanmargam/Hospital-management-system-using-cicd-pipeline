@@ -34,12 +34,28 @@ jobs:
     uses: ./.github/workflows/ci-backend.yml
 
   # ─────────────────────────────────────────────────────────────────────────────
+  # Gate 4: Build & push Docker images to GHCR
+  # ─────────────────────────────────────────────────────────────────────────────
+  docker-publish:
+    name: Docker publish
+    needs: [secrets, ci-frontend, ci-backend]
+    uses: ./.github/workflows/docker-publish.yml
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Gate 5: Trivy image security scan
+  # ─────────────────────────────────────────────────────────────────────────────
+  docker-scan:
+    name: Docker Trivy scan
+    needs: [docker-publish]
+    uses: ./.github/workflows/docker-scan.yml
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # Deploy – only runs when ALL three gates pass
   # ─────────────────────────────────────────────────────────────────────────────
   deploy:
     name: Deploy (${{ github.ref_name }})
     runs-on: ubuntu-latest
-    needs: [secrets, ci-frontend, ci-backend]
+    needs: [secrets, ci-frontend, ci-backend, docker-publish, docker-scan]
 
     environment:
       name: ${{ github.ref_name == 'main' && 'production' || 'preview' }}
