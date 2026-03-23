@@ -7,6 +7,11 @@ on:
       - staging       # preview deployment (optional)
   workflow_dispatch:  # allow manual triggers from the GitHub UI
 
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+
 concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: true  # cancel older queued deploys for the same branch
