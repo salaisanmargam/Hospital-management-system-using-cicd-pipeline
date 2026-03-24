@@ -67,7 +67,8 @@ jobs:
           trivy image \
             --format sarif \
             --output trivy-${{ matrix.name }}.sarif \
-            --vuln-type os,library \
+            --scanners vuln \
+            --pkg-types os,library \
             --severity CRITICAL,HIGH \
             --ignore-unfixed \
             "${{ steps.image.outputs.ref }}"
@@ -86,7 +87,8 @@ jobs:
         run: |
           trivy image \
             --format table \
-            --vuln-type os,library \
+            --scanners vuln \
+            --pkg-types os,library \
             --severity CRITICAL \
             --ignore-unfixed \
             --exit-code 1 \
