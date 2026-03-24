@@ -124,9 +124,20 @@ jobs:
         run: |
           URL="${{ steps.vercel-deploy.outputs.deploymentUrl }}"
           echo "Smoke testing $URL"
-          curl -fsSL "$URL" >/dev/null
-          curl -fsSL "$URL/api/health" >/dev/null
-          echo "Smoke test passed"
+          ROOT_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
+
+          if [ "$ROOT_CODE" = "200" ]; then
+            echo "Frontend URL is public (200). Running strict smoke checks..."
+            curl -fsSL "$URL" >/dev/null
+            curl -fsSL "$URL/api/health" >/dev/null
+            echo "Smoke test passed"
+          elif [ "$ROOT_CODE" = "401" ] || [ "$ROOT_CODE" = "403" ]; then
+            echo "Deployment URL is access-protected (HTTP $ROOT_CODE)."
+            echo "Skipping external smoke check for this deployment URL."
+          else
+            echo "Smoke test failed: unexpected HTTP $ROOT_CODE at $URL"
+            exit 1
+          fi
 
       # Post deployment URL as a PR comment (handy for preview deployments)
       - name: Comment deployment URL on PR
