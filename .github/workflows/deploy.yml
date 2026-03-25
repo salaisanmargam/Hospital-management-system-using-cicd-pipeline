@@ -124,8 +124,11 @@ jobs:
             echo "$DEPLOY_OUTPUT"
 
             if [ $STATUS -eq 0 ]; then
-              URL=$(echo "$DEPLOY_OUTPUT" | tail -n 1)
-              break
+              URL=$(printf '%s\n' "$DEPLOY_OUTPUT" | grep -Eo 'https://[^[:space:]]+\.vercel\.app' | tail -n 1 || true)
+              if [ -n "$URL" ]; then
+                break
+              fi
+              echo "Deploy command succeeded but no deployment URL was detected."
             fi
 
             if [ $attempt -lt 3 ]; then
@@ -136,6 +139,11 @@ jobs:
 
           if [ -z "$URL" ]; then
             echo "Vercel deploy failed after 3 attempts"
+            exit 1
+          fi
+
+          if ! echo "$URL" | grep -Eq '^https://[^[:space:]]+\.vercel\.app$'; then
+            echo "Invalid deployment URL captured: $URL"
             exit 1
           fi
 
