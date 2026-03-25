@@ -163,7 +163,6 @@ def seed_db():
             (demo_contacts,),
         )
         demo_patient_rows = cursor.fetchall() or []
-        demo_patient_ids = [row[0] for row in demo_patient_rows]
 
         if demo_contacts:
             cursor.execute(
