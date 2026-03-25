@@ -10,6 +10,10 @@ Development: run `uvicorn app.main:app --reload` from the backend/ dir.
 import sys
 import os
 import traceback
+from fastapi import FastAPI as _FastAPI
+
+# Vercel expects a top-level ASGI symbol named `app`.
+app = _FastAPI()
 
 # Make the `backend` package importable relative to this file.
 _backend_dir = os.path.join(os.path.dirname(__file__), "..", "backend")
@@ -29,7 +33,6 @@ try:
         print(f"[MedCore] DB pool init warning at cold start: {exc}")
 
     from app.main import app as _fastapi_app
-    from fastapi import FastAPI as _FastAPI
 
     # Mount the FastAPI app at /api so Starlette strips the prefix
     # before forwarding: /api/auth/login → /auth/login.
@@ -44,7 +47,6 @@ except Exception:
     _startup_error = traceback.format_exc()
     print(f"[MedCore] STARTUP ERROR:\n{_startup_error}")
 
-    from fastapi import FastAPI as _FastAPI
     from fastapi.responses import PlainTextResponse as _PR
 
     _fb = _FastAPI()
