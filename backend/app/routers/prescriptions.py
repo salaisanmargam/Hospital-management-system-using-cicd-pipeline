@@ -1,36 +1,81 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from decimal import Decimal
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from ..db import get_conn, dict_cursor
 from ..auth import get_current_user
 
 router = APIRouter(prefix="/prescriptions", tags=["prescriptions"])
 
 @router.get("/")
-def list_prescriptions(conn=Depends(get_conn), user=Depends(get_current_user)):
+def list_prescriptions(
+    patient_id: int | None = Query(default=None),
+    conn=Depends(get_conn),
+    user=Depends(get_current_user),
+):
     cursor = dict_cursor(conn)
     role = user.get("role", "")
 
     base_query = "SELECT pr.*, p.full_name as patient_name, u.full_name as doctor_name FROM prescriptions pr LEFT JOIN patients p ON pr.patient_id = p.id LEFT JOIN users u ON pr.doctor_id = u.id"
+    params = []
 
     if role == "Doctor":
-        cursor.execute(base_query + " WHERE pr.doctor_id = %s", (user["id"],))
+        where_clauses = [
+            "(pr.patient_id IN (SELECT DISTINCT patient_id FROM appointments WHERE doctor_id = %s) OR pr.doctor_id = %s)"
+        ]
+        params.extend([user["id"], user["id"]])
+    
+        if patient_id is not None:
+            where_clauses.append("pr.patient_id = %s")
+            params.append(patient_id)
+
+        cursor.execute(base_query + " WHERE " + " AND ".join(where_clauses), tuple(params))
     elif role == "Patient":
-        cursor.execute(
-            base_query + " WHERE pr.patient_id IN (SELECT id FROM patients WHERE user_id = %s)",
-            (user["id"],),
-        )
+        where_query = base_query + " WHERE pr.patient_id IN (SELECT id FROM patients WHERE user_id = %s)"
+        params = [user["id"]]
+        if patient_id is not None:
+            where_query += " AND pr.patient_id = %s"
+            params.append(patient_id)
+        cursor.execute(where_query, tuple(params))
     else:
         # Admin, Nurse, Pharmacist see all
-        cursor.execute(base_query)
+        where_query = base_query
+        if patient_id is not None:
+            where_query += " WHERE pr.patient_id = %s"
+            params = [patient_id]
+        if params:
+            cursor.execute(where_query, tuple(params))
+        else:
+            cursor.execute(where_query)
 
     rows = cursor.fetchall() or []
 
     # Attach prescription items (medicines) per prescription
     for row in rows:
         cursor.execute(
-            "SELECT medicine_name as name, dosage, quantity FROM prescription_items WHERE prescription_id = %s",
+            """
+            SELECT
+                pi.medicine_name as name,
+                pi.dosage,
+                pi.quantity,
+                COALESCE(m.price, 0) AS unit_price,
+                COALESCE(pi.quantity, 0) * COALESCE(m.price, 0) AS line_total
+            FROM prescription_items pi
+            LEFT JOIN medicines m ON LOWER(m.name) = LOWER(pi.medicine_name)
+            WHERE pi.prescription_id = %s
+            ORDER BY pi.id ASC
+            """,
             (row["id"],),
         )
-        row["medicines"] = cursor.fetchall() or []
+        meds = cursor.fetchall() or []
+        prescription_total = Decimal("0")
+        for med in meds:
+            line_total = med.get("line_total") or Decimal("0")
+            prescription_total += line_total
+            med["unit_price"] = float(med.get("unit_price") or 0)
+            med["line_total"] = float(line_total)
+
+        row["total_cost"] = float(prescription_total)
+        row["medicines"] = meds
 
     cursor.close()
     return rows

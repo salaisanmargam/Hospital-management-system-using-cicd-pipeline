@@ -698,7 +698,7 @@ def run():
         last_visit        = last_visit_raw.date() if hasattr(last_visit_raw, "date") else last_visit_raw
         medical_condition = str(p.get("medical_condition", "") or "").strip() or None
         pat_status_raw    = str(p.get("status", "") or "Outpatient").strip()
-        pat_status        = pat_status_raw if pat_status_raw in ("Inpatient", "Outpatient") else "Outpatient"
+        pat_status        = pat_status_raw if pat_status_raw in ("Inpatient", "Outpatient", "Discharged") else "Outpatient"
         blood_type        = str(p.get("blood_type", "") or "").strip() or None
         allergies         = str(p.get("allergies", "") or "").strip() or None
 

@@ -65,7 +65,7 @@ def create_patient(payload: PatientCreate, conn=Depends(get_conn), user=Depends(
 def update_patient_status(patient_id: int, payload: dict, conn=Depends(get_conn), user=Depends(get_current_user)):
     cursor = dict_cursor(conn)
     new_status = payload.get("status")
-    if new_status not in ("Inpatient", "Outpatient"):
+    if new_status not in ("Inpatient", "Outpatient", "Discharged"):
         raise HTTPException(status_code=400, detail="Invalid status")
     cursor.execute("UPDATE patients SET status = %s WHERE id = %s", (new_status, patient_id))
     if cursor.rowcount == 0:

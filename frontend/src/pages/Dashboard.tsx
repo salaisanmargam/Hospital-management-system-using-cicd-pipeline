@@ -80,8 +80,17 @@ type MachineRecord = {
   name: string;
   department: LabDepartment;
   status: MachineOperationalStatus;
+  supportedDoctorDepartments?: string[];
   updatedBy?: string;
   updatedAt?: string;
+};
+
+type MachineTemplate = {
+  id: string;
+  name: string;
+  department: LabDepartment;
+  defaultStatus: MachineOperationalStatus;
+  doctorDepartments: string[];
 };
 
 const MACHINE_STATUS_STORAGE_KEY = 'medcore_machine_status_v1';
@@ -96,13 +105,57 @@ const LAB_TEST_CATALOG: Record<string, LabDepartment> = {
   'MRI Scan': 'Radiology',
 };
 
-const DEFAULT_MACHINES: MachineRecord[] = [
-  { id: 'm1', name: 'MRI Scanner A', department: 'Radiology', status: 'Online' },
-  { id: 'm2', name: 'X-Ray Unit 2', department: 'Radiology', status: 'Maintenance' },
-  { id: 'm3', name: 'Centrifuge C2', department: 'Pathology', status: 'Running' },
-  { id: 'm4', name: 'Biochemistry Analyzer B1', department: 'Biochemistry', status: 'Online' },
-  { id: 'm5', name: 'Culture Incubator M3', department: 'Microbiology', status: 'Running' },
+const MACHINE_TEMPLATES: MachineTemplate[] = [
+  { id: 'rad-ct-01', name: 'CT Scanner 128-Slice', department: 'Radiology', defaultStatus: 'Online', doctorDepartments: ['Cardiology', 'Emergency', 'Neurology'] },
+  { id: 'rad-mri-01', name: 'MRI Scanner 1.5T', department: 'Radiology', defaultStatus: 'Online', doctorDepartments: ['Cardiology', 'Neurology', 'Orthopedics'] },
+  { id: 'rad-xray-01', name: 'Digital X-Ray Room A', department: 'Radiology', defaultStatus: 'Running', doctorDepartments: ['Emergency', 'Orthopedics', 'General Medicine'] },
+  { id: 'rad-usg-01', name: 'Ultrasound Console OB-1', department: 'Radiology', defaultStatus: 'Online', doctorDepartments: ['Obstetrics', 'General Medicine'] },
+  { id: 'rad-echo-01', name: '2D Echo System', department: 'Radiology', defaultStatus: 'Running', doctorDepartments: ['Cardiology'] },
+  { id: 'pat-cbc-01', name: 'Hematology Analyzer CBC-01', department: 'Pathology', defaultStatus: 'Running', doctorDepartments: ['Cardiology', 'Emergency', 'General Medicine', 'Obstetrics'] },
+  { id: 'pat-coag-01', name: 'Coagulation Analyzer PT/INR', department: 'Pathology', defaultStatus: 'Online', doctorDepartments: ['Cardiology', 'Emergency'] },
+  { id: 'pat-esr-01', name: 'ESR Auto Reader', department: 'Pathology', defaultStatus: 'Online', doctorDepartments: ['General Medicine', 'Emergency'] },
+  { id: 'pat-slide-01', name: 'Digital Slide Scanner', department: 'Pathology', defaultStatus: 'Maintenance', doctorDepartments: ['Oncology', 'General Medicine'] },
+  { id: 'bio-chem-01', name: 'Biochemistry Analyzer B1', department: 'Biochemistry', defaultStatus: 'Online', doctorDepartments: ['Cardiology', 'General Medicine', 'Obstetrics'] },
+  { id: 'bio-elect-01', name: 'Electrolyte Analyzer ELX', department: 'Biochemistry', defaultStatus: 'Running', doctorDepartments: ['Emergency', 'Cardiology', 'Nephrology'] },
+  { id: 'bio-lft-01', name: 'LFT Processing Unit', department: 'Biochemistry', defaultStatus: 'Online', doctorDepartments: ['General Medicine', 'Gastroenterology'] },
+  { id: 'bio-hba1c-01', name: 'HbA1c Analyzer', department: 'Biochemistry', defaultStatus: 'Online', doctorDepartments: ['General Medicine', 'Endocrinology'] },
+  { id: 'mic-culture-01', name: 'Culture Incubator M3', department: 'Microbiology', defaultStatus: 'Running', doctorDepartments: ['Emergency', 'General Medicine', 'Pulmonology'] },
+  { id: 'mic-bactec-01', name: 'BACTEC Blood Culture System', department: 'Microbiology', defaultStatus: 'Online', doctorDepartments: ['Emergency', 'ICU', 'General Medicine'] },
+  { id: 'mic-pcr-01', name: 'PCR Thermal Cycler', department: 'Microbiology', defaultStatus: 'Online', doctorDepartments: ['Pulmonology', 'General Medicine', 'Emergency'] },
+  { id: 'mic-safety-01', name: 'Biosafety Cabinet Class II', department: 'Microbiology', defaultStatus: 'Maintenance', doctorDepartments: ['Microbiology', 'Emergency'] },
 ];
+
+const mergeMachineRecords = (defaults: MachineRecord[], existing: MachineRecord[]) => {
+  const existingById = new Map(existing.map(machine => [machine.id, machine]));
+  return defaults.map(machine => {
+    const saved = existingById.get(machine.id);
+    return saved ? { ...machine, ...saved, supportedDoctorDepartments: machine.supportedDoctorDepartments } : machine;
+  });
+};
+
+const normalizeDoctorDepartment = (value?: string) => {
+  if (!value) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const buildDefaultMachines = (doctorDepartments: string[]): MachineRecord[] => {
+  const normalizedDoctorDepartments = new Set(doctorDepartments.map((department) => department.toLowerCase()));
+
+  return MACHINE_TEMPLATES.map((machine) => {
+    const supportedDoctorDepartments = machine.doctorDepartments.filter((department) =>
+      normalizedDoctorDepartments.has(department.toLowerCase()),
+    );
+
+    return {
+      id: machine.id,
+      name: machine.name,
+      department: machine.department,
+      status: machine.defaultStatus,
+      supportedDoctorDepartments,
+    };
+  });
+};
 
 const normalizeLabDepartment = (value?: string): LabDepartment | undefined => {
   if (!value) return undefined;
@@ -406,6 +459,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     labTests,
     beds,
     prescriptions,
+    bills,
     staff,
     vitals,
     revenueData,
@@ -428,7 +482,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
   const [selectedLabPriority, setSelectedLabPriority] = useState<'Normal' | 'Urgent'>('Normal');
 
   const [machineFilter, setMachineFilter] = useState<'My Department' | 'All'>('My Department');
-  const [machineRecords, setMachineRecords] = useState<MachineRecord[]>(DEFAULT_MACHINES);
+  const doctorDepartments = useMemo(
+    () => Array.from(new Set(
+      staff
+        .filter(member => member.role === UserRole.DOCTOR)
+        .map(member => normalizeDoctorDepartment(member.department))
+        .filter((department): department is string => Boolean(department)),
+    )),
+    [staff],
+  );
+  const defaultMachineRecords = useMemo(() => buildDefaultMachines(doctorDepartments), [doctorDepartments]);
+  const [machineRecords, setMachineRecords] = useState<MachineRecord[]>(defaultMachineRecords);
   const [machineInfo, setMachineInfo] = useState('');
 
   const technicianDepartment = useMemo(() => normalizeLabDepartment(user.department), [user.department]);
@@ -449,14 +513,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
   useEffect(() => {
     try {
       const saved = localStorage.getItem(MACHINE_STATUS_STORAGE_KEY);
-      if (!saved) return;
+      if (!saved) {
+        setMachineRecords(defaultMachineRecords);
+        return;
+      }
+
       const parsed = JSON.parse(saved) as MachineRecord[];
-      if (!Array.isArray(parsed) || parsed.length === 0) return;
-      setMachineRecords(parsed);
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        setMachineRecords(defaultMachineRecords);
+        return;
+      }
+
+      setMachineRecords(mergeMachineRecords(defaultMachineRecords, parsed));
     } catch {
-      // ignore invalid local storage payload
+      setMachineRecords(defaultMachineRecords);
     }
-  }, []);
+  }, [defaultMachineRecords]);
 
   useEffect(() => {
     localStorage.setItem(MACHINE_STATUS_STORAGE_KEY, JSON.stringify(machineRecords));
@@ -505,20 +577,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     setSelectedLabPatientId('');
     setSelectedLabPriority('Normal');
   }, [patients, selectedLabPatientId, selectedLabTestType, technicianDepartment, addLabTest, selectedLabPriority]);
-
-  const getCareStatus = useCallback((patientId: string) => {
-    const current = vitals[patientId];
-    if (!current) return 'Under Observation';
-
-    const hr = Number(current.heartRate);
-    const temp = Number(current.temperature);
-    const spo2 = Number(current.spO2);
-
-    if (!Number.isNaN(spo2) && spo2 < 92) return 'Critical';
-    if (!Number.isNaN(hr) && (hr > 120 || hr < 45)) return 'Critical';
-    if (!Number.isNaN(temp) && temp >= 101) return 'Watch';
-    return 'Stable';
-  }, [vitals]);
 
   const openVitalsEditor = useCallback((patientId: string, patientName: string) => {
     const current = vitals[patientId];
@@ -676,15 +734,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 {beds.filter(b => b.status === 'Occupied').map(bed => {
                   const patient = patients.find(p => p.id === String(bed.patientId));
                   const patientId = patient?.id ?? String(bed.patientId || '');
-                  const careStatus = patientId ? getCareStatus(patientId) : 'Under Observation';
-                  const statusClass =
-                    careStatus === 'Critical'
-                      ? 'bg-red-100 text-red-700'
-                      : careStatus === 'Watch'
-                        ? 'bg-amber-100 text-amber-700'
-                        : careStatus === 'Stable'
-                          ? 'bg-sky-100 text-sky-700'
-                          : 'bg-slate-100 text-slate-700';
 
                   return (
                     <tr key={bed.id} className="text-sm hover:bg-sky-50/50 transition-colors">
@@ -692,7 +741,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                       <td className="py-3.5 text-slate-600">{bed.ward} - {bed.number}</td>
                       <td className="py-3.5 text-slate-600">{patient?.condition || '—'}</td>
                       <td className="py-3.5">
-                        <span className={`${statusClass} px-2.5 py-1 rounded-full text-xs font-semibold`}>{careStatus}</span>
+                        <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-sky-100 text-sky-700">Admitted</span>
                       </td>
                       <td className="py-3.5">
                         {patientId ? (
@@ -991,7 +1040,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                     Routed to: <span className="font-bold">{technicianDepartment || LAB_TEST_CATALOG[selectedLabTestType]}</span>
                   </p>
                 </div>
-
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Priority</label>
                   <div className="flex bg-slate-100 rounded-lg p-1">
@@ -1037,10 +1085,82 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
 
   // PHARMACIST DASHBOARD
   if (role === UserRole.PHARMACIST) {
-    const totalSales = 3450;
-    const lowStockItems = medicines.filter(m => m.stock <= 20);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const oneDayMs = 24 * 60 * 60 * 1000;
+
+    const parseDateOnly = (value?: string) => {
+      if (!value) return null;
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) return null;
+      parsed.setHours(0, 0, 0, 0);
+      return parsed;
+    };
+
+    const paidBills = bills.filter((bill) => bill.status === 'Paid');
+    const totalSales = paidBills.reduce((sum, bill) => sum + (Number(bill.amount) || 0), 0);
+
+    const todaySales = paidBills
+      .filter((bill) => {
+        const date = parseDateOnly(bill.date);
+        return date ? date.getTime() === today.getTime() : false;
+      })
+      .reduce((sum, bill) => sum + (Number(bill.amount) || 0), 0);
+
+    const yesterday = new Date(today.getTime() - oneDayMs);
+    const yesterdaySales = paidBills
+      .filter((bill) => {
+        const date = parseDateOnly(bill.date);
+        return date ? date.getTime() === yesterday.getTime() : false;
+      })
+      .reduce((sum, bill) => sum + (Number(bill.amount) || 0), 0);
+
+    const salesTrend = yesterdaySales > 0
+      ? `${todaySales >= yesterdaySales ? '+' : ''}${(((todaySales - yesterdaySales) / yesterdaySales) * 100).toFixed(0)}%`
+      : undefined;
+
+    const aggregatedMedicines = Array.from(
+      medicines.reduce((map, medicine) => {
+        const key = `${medicine.name}||${medicine.category}||${medicine.unit}`;
+        const minRequired = Number((medicine as any).minRequiredStock ?? 20);
+        const existing = map.get(key);
+
+        if (!existing) {
+          map.set(key, {
+            id: medicine.id,
+            name: medicine.name,
+            category: medicine.category,
+            unit: medicine.unit,
+            stock: Number(medicine.stock || 0),
+            minRequiredStock: minRequired,
+          });
+          return map;
+        }
+
+        existing.stock += Number(medicine.stock || 0);
+        existing.minRequiredStock = Math.max(existing.minRequiredStock, minRequired);
+        return map;
+      }, new Map<string, { id: string; name: string; category: string; unit: string; stock: number; minRequiredStock: number }>()),
+    ).map(([, value]) => value);
+
+    const lowStockItems = aggregatedMedicines.filter(medicine => medicine.stock <= medicine.minRequiredStock);
     const pendingRequests = prescriptions.filter(p => p.status === 'Pending').length;
     const totalMedicines = medicines.length;
+
+    const pharmacyRevenueData = Array.from({ length: 7 }).map((_, idx) => {
+      const targetDate = new Date(today.getTime() - ((6 - idx) * oneDayMs));
+      const dayRevenue = paidBills
+        .filter((bill) => {
+          const date = parseDateOnly(bill.date);
+          return date ? date.getTime() === targetDate.getTime() : false;
+        })
+        .reduce((sum, bill) => sum + (Number(bill.amount) || 0), 0);
+
+      return {
+        name: targetDate.toLocaleDateString([], { weekday: 'short' }),
+        revenue: Number(dayRevenue.toFixed(2)),
+      };
+    });
 
     return (
       <div className="space-y-6">
@@ -1057,7 +1177,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <StatCard title="Daily Sales" value={`₹${totalSales}`} icon={<IndianRupee size={20} />} trend="+5%" color="bg-emerald-500" delay={0.05} />
+          <StatCard title="Daily Sales" value={`₹${todaySales.toFixed(2)}`} icon={<IndianRupee size={20} />} trend={salesTrend} color="bg-emerald-500" delay={0.05} />
           <StatCard title="Pending Dispense" value={pendingRequests.toString()} icon={<Clock size={20} />} color="bg-amber-500" delay={0.1} />
           <StatCard title="Low Stock Items" value={lowStockItems.length.toString()} icon={<AlertTriangle size={20} />} color="bg-red-500" delay={0.15} />
           <StatCard title="Total Medicines" value={totalMedicines.toString()} icon={<Pill size={20} />} color="bg-blue-500" delay={0.2} />
@@ -1084,7 +1204,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {lowStockItems.length > 0 ? lowStockItems.map(med => (
-                  <tr key={med.id} className="hover:bg-sky-50/50 text-sm transition-colors">
+                  <tr key={`${med.name}-${med.category}-${med.unit}`} className="hover:bg-sky-50/50 text-sm transition-colors">
                     <td className="px-6 py-4 font-bold text-slate-800">{med.name}</td>
                     <td className="px-6 py-4 text-slate-600">{med.category}</td>
                     <td className="px-6 py-4 font-mono font-bold text-red-600">{med.stock} {med.unit}</td>
@@ -1109,7 +1229,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
             </h3>
             <div className="flex-1 h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={revenueData}>
+                <BarChart data={pharmacyRevenueData}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
                   <Tooltip content={<CustomTooltip />} />

@@ -32,7 +32,7 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
    const [editPatientForm, setEditPatientForm] = useState({
       full_name: '', age: '', gender: 'Male',
       contact: '', last_visit: '', medical_condition: '',
-      status: 'Outpatient' as 'Outpatient' | 'Inpatient',
+      status: 'Outpatient' as 'Outpatient' | 'Inpatient' | 'Discharged',
       blood_type: '', allergies: '',
    });
 
@@ -47,7 +47,7 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
          contact: p.contact || '',
          last_visit: p.last_visit || p.lastVisit || '',
          medical_condition: p.medical_condition || p.condition || '',
-         status: p.status as 'Outpatient' | 'Inpatient' || 'Outpatient',
+         status: p.status as 'Outpatient' | 'Inpatient' | 'Discharged' || 'Outpatient',
          blood_type: p.blood_type || p.bloodType || '',
          allergies: p.allergies || '',
       });
@@ -261,6 +261,9 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
       return bed ? `${bed.ward} - Bed ${bed.number}` : 'No Bed Assigned';
    };
 
+   const isPatientAdmitted = (patientId: string) =>
+      beds.some(b => b.status === 'Occupied' && String(b.patientId) === String(patientId));
+
    return (
       <div className="space-y-6">
          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 animate-fade-in-up">
@@ -368,11 +371,13 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
                                  </td>
                               )}
                               <td className="px-6 py-4">
-                                 <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${patient.status === 'Inpatient'
+                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${(isPatientAdmitted(patient.id) || patient.status === 'Inpatient')
                                        ? 'bg-amber-100 text-amber-800'
+                                       : patient.status === 'Discharged'
+                                       ? 'bg-slate-200 text-slate-700'
                                        : 'bg-emerald-100 text-emerald-800'
                                     }`}>
-                                    {patient.status}
+                                       {isPatientAdmitted(patient.id) ? 'Admitted' : patient.status}
                                  </span>
                               </td>
                               <td className="px-6 py-4 text-right" onClick={e => e.stopPropagation()}>
@@ -422,7 +427,9 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
                               <span className="flex items-center gap-1"><UserIcon size={14} /> ID: {selectedPatient.id.toUpperCase()}</span>
                               <span className="flex items-center gap-1"><AlertCircle size={14} /> {selectedPatient.condition}</span>
                               <span className="flex items-center gap-1"><Stethoscope size={14} /> Dr: {getAttendingDoctor(selectedPatient.name)}</span>
-                              <span className="bg-white/10 px-2.5 py-0.5 rounded-full text-xs text-white border border-white/10">{selectedPatient.status}</span>
+                              <span className="bg-white/10 px-2.5 py-0.5 rounded-full text-xs text-white border border-white/10">
+                                 {isPatientAdmitted(selectedPatient.id) ? 'Admitted' : selectedPatient.status}
+                              </span>
                            </div>
                         </div>
                      </div>
@@ -838,6 +845,7 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
                            <select value={editPatientForm.status} onChange={e => setEditPatientForm(f => ({ ...f, status: e.target.value as any }))} className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none bg-white">
                               <option value="Outpatient">Outpatient</option>
                               <option value="Inpatient">Inpatient</option>
+                              <option value="Discharged">Discharged</option>
                            </select>
                         </div>
                      </div>

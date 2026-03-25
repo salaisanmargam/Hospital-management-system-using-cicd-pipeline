@@ -9,7 +9,7 @@ interface AppointmentsProps {
 }
 
 export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
-  const { appointments, prescriptions, addAppointment, updateAppointmentStatus, updatePrescriptionStatus, staff } = useData();
+  const { appointments, labTests, prescriptions, addAppointment, updateAppointmentStatus, updatePrescriptionStatus, updateLabTestStatus, staff } = useData();
 
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
@@ -36,12 +36,35 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
       return appointments.filter(a => a.doctorName === user?.name);
     }
     if (isLabTech) {
-      // Lab techs see 'Laboratory' department appointments
-      return appointments.filter(a => a.department === 'Laboratory');
+      // Lab techs see sample queue from lab tests
+      return labTests.map((test: any) => ({
+        id: `lab-${String(test.id)}`,
+        labTestId: String(test.id),
+        patientId: String(test.patientId || 'NA'),
+        patientName: test.patientName,
+        doctorId: String(test.doctorId || 'NA'),
+        doctorName: test.doctorName,
+        department: test.department,
+        date: test.date,
+        time: '09:00 AM',
+        status: test.status === 'Completed'
+          ? AppointmentStatus.COMPLETED
+          : AppointmentStatus.SCHEDULED,
+        type: test.testName,
+      }));
     }
     // Nurses and Admins see all
     return appointments;
-  }, [user, isPatient, isDoctor, isLabTech, appointments]);
+  }, [user, isPatient, isDoctor, isLabTech, appointments, labTests]);
+
+  const myVisiblePrescriptions = React.useMemo(() => {
+    if (isPatient) {
+      return prescriptions
+        .filter(p => p.patientName === user?.name)
+        .sort((a, b) => new Date(`${b.date} ${b.time}`).getTime() - new Date(`${a.date} ${a.time}`).getTime());
+    }
+    return [];
+  }, [isPatient, prescriptions, user]);
 
   const handleDispense = (id: string) => {
     updatePrescriptionStatus(id, 'Dispensed');
@@ -162,9 +185,16 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
                           <span className="font-bold text-slate-700">{med.name}</span>
                           <span className="text-slate-500 ml-2">({med.dosage})</span>
                         </div>
-                        <span className="font-mono font-medium text-slate-600">x{med.quantity}</span>
+                        <div className="text-right">
+                          <span className="font-mono font-medium text-slate-600 block">x{med.quantity}</span>
+                          <span className="text-xs text-slate-500 block">₹{((med.unitPrice || 0) * med.quantity).toFixed(2)}</span>
+                        </div>
                       </div>
                     ))}
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-slate-200 flex items-center justify-between text-sm">
+                    <span className="font-semibold text-slate-600">Estimated medicine total</span>
+                    <span className="font-bold text-slate-900">₹{((prescription.totalCost || 0)).toFixed(2)}</span>
                   </div>
                 </div>
 
@@ -189,13 +219,18 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
                     </button>
                   </>
                 ) : (
-                  <div className="text-center">
-                    <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-2">
-                      <CheckCircle size={24} />
+                  <>
+                    <div className="text-center">
+                      <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-2">
+                        <CheckCircle size={24} />
+                      </div>
+                      <p className="text-sm font-bold text-green-700">Completed</p>
+                      <p className="text-xs text-slate-400 mt-1">Dispensed on {prescription.time}</p>
                     </div>
-                    <p className="text-sm font-bold text-green-700">Completed</p>
-                    <p className="text-xs text-slate-400 mt-1">Dispensed on {prescription.time}</p>
-                  </div>
+                    <button className="w-full py-2 bg-white text-slate-700 border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-100 transition">
+                      Print Label
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -336,7 +371,9 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
                         <div className="flex justify-end gap-2">
                           {(isNurse || isLabTech) && apt.status === AppointmentStatus.SCHEDULED && (
                             <button
-                              onClick={() => updateAppointmentStatus(apt.id, AppointmentStatus.COMPLETED)}
+                              onClick={() => isLabTech
+                                ? updateLabTestStatus((apt as any).labTestId || String(apt.id).replace('lab-', ''), 'Completed')
+                                : updateAppointmentStatus(apt.id, AppointmentStatus.COMPLETED)}
                               className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-md text-xs font-bold hover:bg-indigo-100 transition flex items-center gap-1"
                             >
                               <CheckSquare size={14} /> {isLabTech ? 'Collect Sample' : 'Check In'}
@@ -555,6 +592,48 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
             </div>
           )}
         </div>
+
+        {/* My Prescriptions (Patient-only) */}
+        {isPatient && (
+          <div className="lg:col-span-2 glass-card rounded-2xl p-6">
+            <h3 className="font-display font-bold text-slate-900 mb-4 flex items-center gap-2">
+              <Pill size={18} className="text-teal-500" />
+              My Prescriptions
+            </h3>
+            {myVisiblePrescriptions.length > 0 ? (
+              <div className="space-y-3">
+                {myVisiblePrescriptions.map((rx) => (
+                  <div key={rx.id} className="border border-slate-200 rounded-xl p-4 bg-white">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                      <p className="text-sm text-slate-700">
+                        Prescribed by <span className="font-semibold">{rx.doctorName}</span>
+                      </p>
+                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${rx.status === 'Dispensed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {rx.status}
+                      </span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {rx.medicines.map((med, index) => (
+                        <div key={`${rx.id}-${index}`} className="flex items-center justify-between text-sm">
+                          <span className="text-slate-800">{med.name} <span className="text-slate-500">({med.dosage})</span></span>
+                          <span className="text-slate-600">x{med.quantity} • ₹{((med.lineTotal || (med.unitPrice || 0) * med.quantity)).toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-sm">
+                      <span className="text-slate-600">Estimated total</span>
+                      <span className="font-bold text-slate-900">₹{(rx.totalCost || 0).toFixed(2)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-xl p-4">
+                No prescriptions found yet.
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Doctor Availability Directory - Hidden for Doctors */}
         <div className="glass-card rounded-2xl p-6 h-fit">

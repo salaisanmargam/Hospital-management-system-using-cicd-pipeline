@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, Plus, AlertTriangle, Package, IndianRupee, FileText, Pill, X, Check, User as UserIcon, Clock } from 'lucide-react';
 import { User, UserRole } from '../types';
 import { useData } from '../contexts/DataContext';
@@ -8,9 +9,15 @@ interface PharmacyProps {
 }
 
 export const Pharmacy: React.FC<PharmacyProps> = ({ user }) => {
-    const { medicines, prescriptions, patients, appointments, addPrescription, updatePrescriptionStatus } = useData();
+    const { medicines, prescriptions, patients, appointments, addPrescription, updatePrescriptionStatus, restockMedicine } = useData();
 
     const [showPrescribeModal, setShowPrescribeModal] = useState(false);
+    const [showRestockModal, setShowRestockModal] = useState(false);
+    const [restockTarget, setRestockTarget] = useState<{ id: string; name: string; unit: string; stock: number; minRequiredStock: number } | null>(null);
+    const [restockQty, setRestockQty] = useState('50');
+    const [activeTab, setActiveTab] = useState<'Inventory' | 'Prescriptions History'>('Inventory');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedHistoryPatientId, setSelectedHistoryPatientId] = useState<string | null>(null);
     const [selectedPatientId, setSelectedPatientId] = useState('');
     const [selectedMeds, setSelectedMeds] = useState<string[]>([]);
     const [dosageMap, setDosageMap] = useState<Record<string, string>>({});
@@ -35,6 +42,34 @@ export const Pharmacy: React.FC<PharmacyProps> = ({ user }) => {
         }
         return patients;
     }, [user, isDoctor, patients, appointments]);
+
+    const historyPatients = useMemo(() => {
+        const map = new Map<string, { id: string; name: string; count: number }>();
+        prescriptions.forEach((rx) => {
+            const key = rx.patientId || rx.patientName;
+            const existing = map.get(key);
+            if (existing) {
+                existing.count += 1;
+            } else {
+                map.set(key, {
+                    id: rx.patientId || key,
+                    name: rx.patientName,
+                    count: 1,
+                });
+            }
+        });
+
+        return Array.from(map.values())
+            .filter((p) => p.name.toLowerCase().includes(searchTerm.toLowerCase()))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [prescriptions, searchTerm]);
+
+    const selectedPatientHistory = useMemo(() => {
+        if (!selectedHistoryPatientId) return [];
+        return prescriptions
+            .filter((rx) => (rx.patientId || rx.patientName) === selectedHistoryPatientId)
+            .sort((a, b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`));
+    }, [prescriptions, selectedHistoryPatientId]);
 
     const toggleMedSelection = (medName: string) => {
         if (selectedMeds.includes(medName)) {
@@ -76,6 +111,34 @@ export const Pharmacy: React.FC<PharmacyProps> = ({ user }) => {
         setSelectedMeds([]);
         setSelectedPatientId('');
         setDosageMap({});
+    };
+
+    const openRestockModal = (medicine: { id: string; name: string; unit: string; stock: number; minRequiredStock?: number }) => {
+        setRestockTarget({
+            id: medicine.id,
+            name: medicine.name,
+            unit: medicine.unit,
+            stock: medicine.stock,
+            minRequiredStock: medicine.minRequiredStock ?? 20,
+        });
+        setRestockQty('50');
+        setShowRestockModal(true);
+    };
+
+    const closeRestockModal = () => {
+        setShowRestockModal(false);
+        setRestockTarget(null);
+        setRestockQty('50');
+    };
+
+    const handleConfirmRestock = () => {
+        if (!restockTarget) return;
+        const quantity = Number(restockQty);
+        if (!Number.isFinite(quantity) || quantity <= 0) {
+            return;
+        }
+        restockMedicine(restockTarget.id, Math.floor(quantity));
+        closeRestockModal();
     };
 
     // DOCTOR VIEW
@@ -134,6 +197,7 @@ export const Pharmacy: React.FC<PharmacyProps> = ({ user }) => {
                                     <th className="px-6 py-4">Date</th>
                                     <th className="px-6 py-4">Patient</th>
                                     <th className="px-6 py-4">Medicines Prescribed</th>
+                                    <th className="px-6 py-4">Total Cost</th>
                                     <th className="px-6 py-4">Pharmacy Status</th>
                                 </tr>
                             </thead>
@@ -156,10 +220,13 @@ export const Pharmacy: React.FC<PharmacyProps> = ({ user }) => {
                                                         <Pill size={12} className="text-teal-500" />
                                                         <span className="text-slate-900 font-medium">{m.name}</span>
                                                         <span className="text-slate-500 text-xs">({m.dosage})</span>
+                                                        <span className="text-slate-400 text-xs">x{m.quantity}</span>
+                                                        <span className="text-slate-500 text-xs">₹{(m.lineTotal || ((m.unitPrice || 0) * m.quantity)).toFixed(2)}</span>
                                                     </div>
                                                 ))}
                                             </div>
                                         </td>
+                                        <td className="px-6 py-4 text-sm font-semibold text-slate-700">₹{(p.totalCost || 0).toFixed(2)}</td>
                                         <td className="px-6 py-4">
                                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${p.status === 'Dispensed' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                                                 }`}>
@@ -169,7 +236,7 @@ export const Pharmacy: React.FC<PharmacyProps> = ({ user }) => {
                                     </tr>
                                 )) : (
                                     <tr>
-                                        <td colSpan={4} className="p-12 text-center text-slate-400">No prescriptions found.</td>
+                                        <td colSpan={5} className="p-12 text-center text-slate-400">No prescriptions found.</td>
                                     </tr>
                                 )}
                             </tbody>
@@ -331,7 +398,7 @@ export const Pharmacy: React.FC<PharmacyProps> = ({ user }) => {
                     <div className="flex justify-between items-center">
                         <div>
                             <p className="text-slate-500 text-sm font-medium">Low Stock Alerts</p>
-                            <h3 className="text-2xl font-display font-bold text-amber-600 mt-2">{medicines.filter(m => m.stock <= 20).length} Items</h3>
+                            <h3 className="text-2xl font-display font-bold text-amber-600 mt-2">{medicines.filter(m => m.stock > 0 && m.stock <= (m.minRequiredStock ?? 20)).length} Items</h3>
                         </div>
                         <div className="p-3 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/20">
                             <AlertTriangle size={24} />
@@ -354,59 +421,199 @@ export const Pharmacy: React.FC<PharmacyProps> = ({ user }) => {
             <div className="glass-card rounded-2xl overflow-hidden">
                 <div className="p-4 border-b border-slate-200/50 bg-gradient-to-r from-slate-50 to-sky-50/30 flex items-center justify-between">
                     <div className="flex gap-4">
-                        <button className="text-sm font-bold text-teal-700 border-b-2 border-teal-600 px-2 py-1">Inventory</button>
-                        <button className="text-sm font-medium text-slate-500 hover:text-slate-700 px-2 py-1">Prescriptions History</button>
+                        <button
+                            onClick={() => setActiveTab('Inventory')}
+                            className={`text-sm px-2 py-1 ${activeTab === 'Inventory' ? 'font-bold text-teal-700 border-b-2 border-teal-600' : 'font-medium text-slate-500 hover:text-slate-700'}`}
+                        >
+                            Inventory
+                        </button>
+                        <button
+                            onClick={() => {
+                                setActiveTab('Prescriptions History');
+                                if (!selectedHistoryPatientId && historyPatients.length > 0) {
+                                    setSelectedHistoryPatientId(historyPatients[0].id);
+                                }
+                            }}
+                            className={`text-sm px-2 py-1 ${activeTab === 'Prescriptions History' ? 'font-bold text-teal-700 border-b-2 border-teal-600' : 'font-medium text-slate-500 hover:text-slate-700'}`}
+                        >
+                            Prescriptions History
+                        </button>
                     </div>
                     <div className="relative w-64">
                         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input
                             type="text"
-                            placeholder="Search medicine..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder={activeTab === 'Inventory' ? 'Search medicine...' : 'Search patient...'}
                             className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-xs focus:outline-none focus:border-teal-500"
                         />
                     </div>
                 </div>
-                <table className="w-full text-left">
-                    <thead>
-                        <tr className="bg-slate-50/80 text-slate-400 text-xs uppercase font-semibold border-b border-slate-200/50 tracking-wider">
-                            <th className="px-6 py-4">Medicine Name</th>
-                            <th className="px-6 py-4">Category</th>
-                            <th className="px-6 py-4">Stock</th>
-                            <th className="px-6 py-4">Price / Unit</th>
-                            <th className="px-6 py-4">Expiry Date</th>
-                            <th className="px-6 py-4">Status</th>
-                            <th className="px-6 py-4 text-right">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                        {medicines.map((med) => (
-                            <tr key={med.id} className="hover:bg-sky-50/50 transition-colors">
-                                <td className="px-6 py-4">
-                                    <p className="font-semibold text-slate-900 text-sm">{med.name}</p>
-                                    <p className="text-xs text-slate-500">ID: {med.id.toUpperCase()}</p>
-                                </td>
-                                <td className="px-6 py-4 text-sm text-slate-600">{med.category}</td>
-                                <td className="px-6 py-4 text-sm font-medium text-slate-900">
-                                    {med.stock} <span className="text-xs text-slate-500 font-normal">{med.unit}</span>
-                                </td>
-                                <td className="px-6 py-4 text-sm text-slate-600">₹{med.price.toFixed(2)}</td>
-                                <td className="px-6 py-4 text-sm text-slate-500">{med.expiryDate}</td>
-                                <td className="px-6 py-4">
-                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${med.status === 'In Stock' ? 'bg-emerald-100 text-emerald-800' :
-                                            med.status === 'Low Stock' ? 'bg-amber-100 text-amber-800' :
-                                                'bg-red-100 text-red-800'
-                                        }`}>
-                                        {med.status}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                    <button className="text-sky-600 hover:text-sky-700 text-sm font-medium">Restock</button>
-                                </td>
+                {activeTab === 'Inventory' ? (
+                    <table className="w-full text-left">
+                        <thead>
+                            <tr className="bg-slate-50/80 text-slate-400 text-xs uppercase font-semibold border-b border-slate-200/50 tracking-wider">
+                                <th className="px-6 py-4">Medicine Name</th>
+                                <th className="px-6 py-4">Category</th>
+                                <th className="px-6 py-4">Stock</th>
+                                <th className="px-6 py-4">Price / Unit</th>
+                                <th className="px-6 py-4">Expiry Date</th>
+                                <th className="px-6 py-4">Status</th>
+                                <th className="px-6 py-4 text-right">Action</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {medicines
+                                .filter((med) => med.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                                .map((med) => (
+                                    <tr key={med.id} className="hover:bg-sky-50/50 transition-colors">
+                                        <td className="px-6 py-4">
+                                            <p className="font-semibold text-slate-900 text-sm">{med.name}</p>
+                                            <p className="text-xs text-slate-500">ID: {med.id.toUpperCase()}</p>
+                                        </td>
+                                        <td className="px-6 py-4 text-sm text-slate-600">{med.category}</td>
+                                        <td className="px-6 py-4 text-sm font-medium text-slate-900">
+                                            {med.stock} <span className="text-xs text-slate-500 font-normal">{med.unit}</span>
+                                        </td>
+                                        <td className="px-6 py-4 text-sm text-slate-600">₹{med.price.toFixed(2)}</td>
+                                        <td className="px-6 py-4 text-sm text-slate-500">{med.expiryDate}</td>
+                                        <td className="px-6 py-4">
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${med.status === 'In Stock' ? 'bg-emerald-100 text-emerald-800' :
+                                                med.status === 'Low Stock' ? 'bg-amber-100 text-amber-800' :
+                                                    'bg-red-100 text-red-800'
+                                                }`}>
+                                                {med.status}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <button
+                                                onClick={() => openRestockModal(med)}
+                                                className="text-sky-600 hover:text-sky-700 text-sm font-medium"
+                                            >
+                                                Restock
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                        </tbody>
+                    </table>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-3 min-h-[480px]">
+                        <div className="border-r border-slate-200/60 p-4 space-y-2 max-h-[620px] overflow-y-auto">
+                            {historyPatients.length > 0 ? historyPatients.map((patient) => (
+                                <button
+                                    key={patient.id}
+                                    onClick={() => setSelectedHistoryPatientId(patient.id)}
+                                    className={`w-full text-left p-3 rounded-xl border transition ${selectedHistoryPatientId === patient.id ? 'border-teal-300 bg-teal-50' : 'border-slate-200 hover:bg-slate-50'}`}
+                                >
+                                    <p className="text-sm font-semibold text-slate-900">{patient.name}</p>
+                                    <p className="text-xs text-slate-500">{patient.count} prescriptions</p>
+                                </button>
+                            )) : (
+                                <p className="text-sm text-slate-400 p-2">No patients found.</p>
+                            )}
+                        </div>
+
+                        <div className="md:col-span-2 p-4 max-h-[620px] overflow-y-auto">
+                            {selectedHistoryPatientId && selectedPatientHistory.length > 0 ? (
+                                <div className="space-y-4">
+                                    {selectedPatientHistory.map((rx) => (
+                                        <div key={rx.id} className="border border-slate-200 rounded-xl p-4 bg-white">
+                                            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                                                <div>
+                                                    <p className="text-sm font-semibold text-slate-900">Prescription #{rx.id}</p>
+                                                    <p className="text-xs text-slate-500">{rx.date} at {rx.time}</p>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${rx.status === 'Dispensed' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                                                        {rx.status}
+                                                    </span>
+                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${rx.priority === 'Urgent' ? 'bg-red-100 text-red-800' : 'bg-sky-100 text-sky-800'}`}>
+                                                        {rx.priority}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <p className="text-sm text-slate-600 mb-2">Doctor: <span className="font-medium text-slate-800">{rx.doctorName}</span></p>
+
+                                            <div className="space-y-2">
+                                                {rx.medicines.map((med, idx) => (
+                                                    <div key={idx} className="flex items-center justify-between text-sm border-b border-slate-100 pb-2 last:border-b-0 last:pb-0">
+                                                        <div>
+                                                            <p className="font-medium text-slate-800">{med.name}</p>
+                                                            <p className="text-xs text-slate-500">{med.dosage} • Qty {med.quantity}</p>
+                                                        </div>
+                                                        <p className="text-xs text-slate-600">₹{(med.lineTotal || ((med.unitPrice || 0) * med.quantity)).toFixed(2)}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            <div className="mt-3 pt-3 border-t border-slate-100 flex justify-between items-center">
+                                                <span className="text-sm text-slate-600">Total</span>
+                                                <span className="text-sm font-semibold text-slate-900">₹{(rx.totalCost || 0).toFixed(2)}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="h-full flex items-center justify-center text-slate-400 text-sm">
+                                    Select a patient to view prescription history.
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
+
+            {showRestockModal && restockTarget && createPortal(
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200/50">
+                        <div className="p-5 border-b border-slate-200/50 flex justify-between items-center bg-gradient-to-r from-slate-50 to-sky-50/30">
+                            <h3 className="font-display font-bold text-slate-800">Restock Medicine</h3>
+                            <button onClick={closeRestockModal} className="text-slate-400 hover:text-slate-600">
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div className="p-5 space-y-4">
+                            <div>
+                                <p className="text-sm font-semibold text-slate-900">{restockTarget.name}</p>
+                                <p className="text-xs text-slate-500">Current Stock: {restockTarget.stock} {restockTarget.unit}</p>
+                                <p className="text-xs text-amber-600 mt-1">Minimum Required: {restockTarget.minRequiredStock} {restockTarget.unit}</p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-2">Add Quantity</label>
+                                <input
+                                    type="number"
+                                    min={1}
+                                    step={1}
+                                    value={restockQty}
+                                    onChange={(e) => setRestockQty(e.target.value)}
+                                    className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-teal-500"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="p-5 border-t border-slate-200 bg-slate-50 flex gap-3">
+                            <button
+                                onClick={closeRestockModal}
+                                className="flex-1 py-2.5 border border-slate-300 text-slate-700 rounded-lg font-medium hover:bg-white transition"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleConfirmRestock}
+                                className="flex-1 py-2.5 bg-gradient-to-r from-sky-500 to-teal-500 text-white rounded-xl font-medium hover:from-sky-600 hover:to-teal-600 transition-all"
+                            >
+                                Update Stock
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
         </div>
     );
 };

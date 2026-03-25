@@ -291,6 +291,13 @@ export const listMedicines = async (token: string): Promise<any[]> =>
 export const createMedicine = async (token: string, payload: any): Promise<any> =>
   request<any>('/medicines/', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
 
+export const updateMedicineStock = async (token: string, medicineId: string, quantity: number): Promise<any> =>
+  request<any>(`/medicines/${medicineId}/stock`, {
+    method: 'PATCH',
+    headers: authHeaders(token),
+    body: JSON.stringify({ quantity }),
+  });
+
 // ─── Beds ─────────────────────────────────────────────────────────────────────
 
 export const listBeds = async (token: string): Promise<any[]> =>
@@ -307,8 +314,18 @@ export const listLabTests = async (token: string): Promise<any[]> =>
 export const createLabTest = async (token: string, payload: any): Promise<any> =>
   request<any>('/lab-tests/', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
 
-export const updateLabTestStatus = async (token: string, testId: string, status: string): Promise<any> =>
-  request<any>(`/lab-tests/${testId}/status`, { method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ status }) });
+export const updateLabTestStatus = async (
+  token: string,
+  testId: string,
+  status: string,
+  resultText?: string,
+  resultFileUrl?: string,
+): Promise<any> =>
+  request<any>(`/lab-tests/${testId}/status`, {
+    method: 'PATCH',
+    headers: authHeaders(token),
+    body: JSON.stringify({ status, result_text: resultText, result_file_url: resultFileUrl }),
+  });
 
 // ─── Prescriptions ────────────────────────────────────────────────────────────
 

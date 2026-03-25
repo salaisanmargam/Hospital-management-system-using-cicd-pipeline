@@ -1,16 +1,63 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Search, Upload, FileText, CheckCircle, Clock, AlertCircle, Plus, X, User as UserIcon, Calendar, FlaskConical, Microscope, ScanLine, TestTube } from 'lucide-react';
 import { User, UserRole } from '../types';
 import { useData } from '../contexts/DataContext';
+import { AUTH_STORAGE_KEY } from '../services/api';
 
 interface LaboratoryProps {
   user?: User;
 }
 
+type LabMachineDepartment = 'Pathology' | 'Radiology' | 'Microbiology' | 'Biochemistry';
+
+const LAB_MACHINE_DIRECTORY: Record<LabMachineDepartment, string[]> = {
+  Pathology: [
+    'Hematology Analyzer CBC-01',
+    'Coagulation Analyzer PT/INR',
+    'ESR Auto Reader',
+    'Digital Slide Scanner',
+  ],
+  Radiology: [
+    'CT Scanner 128-Slice',
+    'MRI Scanner 1.5T',
+    'Digital X-Ray Room A',
+    'Ultrasound Console OB-1',
+    '2D Echo System',
+  ],
+  Microbiology: [
+    'Culture Incubator M3',
+    'BACTEC Blood Culture System',
+    'PCR Thermal Cycler',
+    'Biosafety Cabinet Class II',
+  ],
+  Biochemistry: [
+    'Biochemistry Analyzer B1',
+    'Electrolyte Analyzer ELX',
+    'LFT Processing Unit',
+    'HbA1c Analyzer',
+  ],
+};
+
+const DOCTOR_DEPARTMENT_TO_LABS: Record<string, LabMachineDepartment[]> = {
+  cardiology: ['Radiology', 'Biochemistry', 'Pathology'],
+  obstetrics: ['Radiology', 'Biochemistry', 'Pathology'],
+  emergency: ['Radiology', 'Pathology', 'Microbiology', 'Biochemistry'],
+  'general medicine': ['Pathology', 'Biochemistry', 'Microbiology', 'Radiology'],
+  neurology: ['Radiology', 'Biochemistry'],
+  orthopedics: ['Radiology', 'Pathology'],
+};
+
 export const Laboratory: React.FC<LaboratoryProps> = ({ user }) => {
-  const { labTests, patients, appointments, addLabTest, updateLabTestStatus } = useData();
+  const { labTests, patients, appointments, addLabTest, updateLabTestStatus, refreshAllData } = useData();
 
   const [showPrescribeModal, setShowPrescribeModal] = useState(false);
+  const [selectedResultTest, setSelectedResultTest] = useState<any | null>(null);
+  const [showUpdateResultModal, setShowUpdateResultModal] = useState(false);
+  const [resultTargetTest, setResultTargetTest] = useState<any | null>(null);
+  const [resultDescription, setResultDescription] = useState('');
+  const [resultDocUrl, setResultDocUrl] = useState('');
+  const [resultDocName, setResultDocName] = useState('');
+  const [resultSaving, setResultSaving] = useState(false);
   const [selectedPatientId, setSelectedPatientId] = useState('');
   const [testPriority, setTestPriority] = useState<'Normal' | 'Urgent'>('Normal');
   const [selectedTestType, setSelectedTestType] = useState('Complete Blood Count (CBC)');
@@ -20,6 +67,14 @@ export const Laboratory: React.FC<LaboratoryProps> = ({ user }) => {
 
   const isDoctor = user?.role === UserRole.DOCTOR;
   const isLabTechnician = user?.role === UserRole.LAB_TECHNICIAN;
+
+  useEffect(() => {
+    const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+    const token = stored ? JSON.parse(stored)?.token : null;
+    if (token) {
+      refreshAllData(token);
+    }
+  }, [refreshAllData]);
 
   const normalizeDepartment = (value?: string) => {
     if (!value) return undefined;
@@ -39,6 +94,25 @@ export const Laboratory: React.FC<LaboratoryProps> = ({ user }) => {
   };
 
   const technicianDepartment = normalizeDepartment(user?.department);
+  const doctorRelevantLabDepartments = useMemo<LabMachineDepartment[]>(() => {
+    if (!isDoctor || !user?.department) return [];
+    return DOCTOR_DEPARTMENT_TO_LABS[user.department.trim().toLowerCase()] || ['Pathology', 'Radiology'];
+  }, [isDoctor, user?.department]);
+
+  const visibleMachineDepartments = useMemo<LabMachineDepartment[]>(() => {
+    if (isLabTechnician && technicianDepartment) return [technicianDepartment];
+    if (isDoctor) return doctorRelevantLabDepartments;
+    if (activeTab !== 'All') return [activeTab];
+    return ['Pathology', 'Radiology', 'Microbiology', 'Biochemistry'];
+  }, [activeTab, doctorRelevantLabDepartments, isDoctor, isLabTechnician, technicianDepartment]);
+
+  const visibleMachineGroups = useMemo(
+    () => visibleMachineDepartments.map((department) => ({
+      department,
+      machines: LAB_MACHINE_DIRECTORY[department],
+    })),
+    [visibleMachineDepartments],
+  );
 
   // TESTS MAPPING (Simulating Database of Tests -> Departments)
   const TEST_CATALOG: Record<string, 'Pathology' | 'Radiology' | 'Microbiology' | 'Biochemistry'> = {
@@ -107,11 +181,59 @@ export const Laboratory: React.FC<LaboratoryProps> = ({ user }) => {
   };
 
   const handleStatusUpdate = (testId: string) => {
-    // Simulating moving forward in status: Pending -> In Progress -> Completed
     const test = labTests.find(t => t.id === testId);
-    if (test) {
-      if (test.status === 'Pending') updateLabTestStatus(testId, 'In Progress');
-      else if (test.status === 'In Progress') updateLabTestStatus(testId, 'Completed');
+    if (!test) return;
+
+    if (test.status === 'Pending') {
+      updateLabTestStatus(testId, 'In Progress');
+      return;
+    }
+
+    if (test.status === 'In Progress') {
+      setResultTargetTest(test);
+      setResultDescription(test.resultText || '');
+      setResultDocUrl(test.resultFileUrl || '');
+      setResultDocName('');
+      setShowUpdateResultModal(true);
+    }
+  };
+
+  const handleEditCompletedResult = (test: any) => {
+    setResultTargetTest(test);
+    setResultDescription(test.resultText || '');
+    setResultDocUrl(test.resultFileUrl || '');
+    setResultDocName('');
+    setShowUpdateResultModal(true);
+  };
+
+  const handleAttachResultDocument = (file?: File) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      setResultDocUrl(dataUrl);
+      setResultDocName(file.name);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveResultAndComplete = async () => {
+    if (!resultTargetTest || !resultDescription.trim()) return;
+    setResultSaving(true);
+    try {
+      await updateLabTestStatus(
+        resultTargetTest.id,
+        'Completed',
+        resultDescription.trim(),
+        resultDocUrl.trim() || undefined,
+      );
+      setShowUpdateResultModal(false);
+      setResultTargetTest(null);
+      setResultDescription('');
+      setResultDocUrl('');
+      setResultDocName('');
+    } finally {
+      setResultSaving(false);
     }
   };
 
@@ -192,6 +314,48 @@ export const Laboratory: React.FC<LaboratoryProps> = ({ user }) => {
               <AlertCircle size={20} />
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="glass-card rounded-2xl p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+          <div>
+            <h3 className="text-lg font-display font-bold text-slate-800 flex items-center gap-2">
+              <ScanLine size={18} className="text-teal-500" />
+              Laboratory Machines
+            </h3>
+            <p className="text-sm text-slate-500 mt-1">
+              {isDoctor
+                ? `Showing machines relevant to ${user?.department || 'your'} department.`
+                : isLabTechnician
+                  ? `Showing ${technicianDepartment || 'assigned'} department machines.`
+                  : 'Showing machine inventory across lab departments.'}
+            </p>
+          </div>
+          <span className="px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold">
+            {visibleMachineGroups.reduce((count, group) => count + group.machines.length, 0)} machines
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {visibleMachineGroups.map((group) => (
+            <div key={group.department} className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <h4 className="font-semibold text-slate-800">{group.department}</h4>
+                <span className="text-xs font-medium px-2 py-1 rounded-full bg-slate-100 text-slate-600">
+                  {group.machines.length} machines
+                </span>
+              </div>
+              <div className="space-y-2">
+                {group.machines.map((machine) => (
+                  <div key={machine} className="flex items-center gap-2 text-sm text-slate-600 rounded-lg bg-slate-50 px-3 py-2 border border-slate-100">
+                    <span className="w-2 h-2 rounded-full bg-teal-500"></span>
+                    <span>{machine}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -281,16 +445,29 @@ export const Laboratory: React.FC<LaboratoryProps> = ({ user }) => {
                     </td>
                     <td className="px-6 py-4 text-right">
                       {test.status === 'Completed' ? (
-                        <button className="text-teal-600 hover:text-teal-800 text-sm font-medium flex items-center justify-end gap-1 ml-auto">
-                          <FileText size={16} />
-                          Results
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => setSelectedResultTest(test)}
+                            className="text-teal-600 hover:text-teal-800 text-sm font-medium flex items-center justify-end gap-1"
+                          >
+                            <FileText size={16} />
+                            Results
+                          </button>
+                          {isLabTechnician && (
+                            <button
+                              onClick={() => handleEditCompletedResult(test)}
+                              className="text-slate-600 hover:text-teal-700 text-xs font-medium border border-slate-200 px-2 py-1 rounded hover:bg-white hover:border-teal-300 transition"
+                            >
+                              Edit Result
+                            </button>
+                          )}
+                        </div>
                       ) : (
                         <button
                           onClick={() => handleStatusUpdate(test.id)}
                           className="text-slate-500 hover:text-teal-600 text-xs font-medium border border-slate-200 px-2 py-1 rounded hover:bg-white hover:border-teal-300 transition"
                         >
-                          {isDoctor ? 'Track' : 'Update Status'}
+                          {isDoctor ? 'Track' : test.status === 'In Progress' ? 'Update Result' : 'Update Status'}
                         </button>
                       )}
                     </td>
@@ -308,6 +485,146 @@ export const Laboratory: React.FC<LaboratoryProps> = ({ user }) => {
           )}
         </div>
       </div>
+
+      {/* Lab Result Modal */}
+      {selectedResultTest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-scale-in border border-slate-200/50">
+            <div className="p-5 border-b border-slate-200/50 flex justify-between items-center bg-gradient-to-r from-emerald-50 to-teal-50/40">
+              <div>
+                <h3 className="font-display font-bold text-slate-800 flex items-center gap-2">
+                  <FileText size={18} className="text-teal-600" />
+                  Lab Result
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">Patient: {selectedResultTest.patientName}</p>
+              </div>
+              <button onClick={() => setSelectedResultTest(null)} className="text-slate-400 hover:text-slate-600">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
+                  <p className="text-xs text-slate-400 uppercase font-semibold">Test</p>
+                  <p className="font-semibold text-slate-800 mt-1">{selectedResultTest.testName}</p>
+                </div>
+                <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
+                  <p className="text-xs text-slate-400 uppercase font-semibold">Department</p>
+                  <p className="font-semibold text-slate-800 mt-1">{selectedResultTest.department}</p>
+                </div>
+                <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
+                  <p className="text-xs text-slate-400 uppercase font-semibold">Doctor</p>
+                  <p className="font-semibold text-slate-800 mt-1">{selectedResultTest.doctorName}</p>
+                </div>
+                <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
+                  <p className="text-xs text-slate-400 uppercase font-semibold">Reported Date</p>
+                  <p className="font-semibold text-slate-800 mt-1">{selectedResultTest.date}</p>
+                </div>
+              </div>
+
+              <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4">
+                <p className="text-xs text-emerald-700 uppercase font-semibold">Result Summary</p>
+                <p className="text-sm text-slate-700 mt-2">
+                  {selectedResultTest.resultText || 'Exact result is not uploaded for this test yet.'}
+                </p>
+              </div>
+
+              {selectedResultTest.resultFileUrl && (
+                <a
+                  href={selectedResultTest.resultFileUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 text-sm font-semibold text-teal-700 hover:text-teal-800"
+                >
+                  <FileText size={15} /> Open Attached Report
+                </a>
+              )}
+            </div>
+
+            <div className="px-6 pb-6">
+              <button
+                onClick={() => setSelectedResultTest(null)}
+                className="w-full py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Update Result Modal (for In Progress tests) */}
+      {showUpdateResultModal && resultTargetTest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-scale-in border border-slate-200/50">
+            <div className="p-5 border-b border-slate-200/50 flex justify-between items-center bg-gradient-to-r from-sky-50 to-teal-50/40">
+              <div>
+                <h3 className="font-display font-bold text-slate-800 flex items-center gap-2">
+                  <Upload size={18} className="text-teal-600" />
+                  {resultTargetTest.status === 'Completed' ? 'Edit Completed Result' : 'Update Lab Result'}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">{resultTargetTest.patientName} · {resultTargetTest.testName}</p>
+              </div>
+              <button onClick={() => setShowUpdateResultModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Result Description</label>
+                <textarea
+                  value={resultDescription}
+                  onChange={(e) => setResultDescription(e.target.value)}
+                  placeholder="Enter exact lab finding/result text for doctor and patient..."
+                  className="w-full p-3 border border-slate-300 rounded-xl text-sm h-28 resize-none focus:outline-none focus:border-teal-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Attach Result Document</label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                    onChange={(e) => handleAttachResultDocument(e.target.files?.[0])}
+                    className="block w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200"
+                  />
+                  <input
+                    type="url"
+                    value={resultDocUrl.startsWith('data:') ? '' : resultDocUrl}
+                    onChange={(e) => { setResultDocUrl(e.target.value); setResultDocName(''); }}
+                    placeholder="or paste document URL"
+                    className="w-full sm:w-72 p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-teal-500"
+                  />
+                </div>
+                {(resultDocName || resultDocUrl) && (
+                  <p className="text-xs text-teal-700 mt-2">
+                    Attached: {resultDocName || 'Document URL linked'}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-slate-200 flex gap-3 bg-slate-50">
+              <button
+                onClick={() => setShowUpdateResultModal(false)}
+                className="flex-1 py-2.5 border border-slate-300 text-slate-700 rounded-lg font-medium hover:bg-white transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveResultAndComplete}
+                disabled={resultSaving || !resultDescription.trim()}
+                className="flex-1 py-2.5 bg-gradient-to-r from-sky-500 to-teal-500 text-white rounded-xl font-medium hover:from-sky-600 hover:to-teal-600 transition-all shadow-lg shadow-sky-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {resultSaving ? 'Saving...' : 'Save Result & Complete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Prescribe Test Modal */}
       {showPrescribeModal && (

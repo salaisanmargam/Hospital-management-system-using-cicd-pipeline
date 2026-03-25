@@ -29,7 +29,7 @@ export interface Patient {
   contact: string;
   lastVisit: string;
   condition: string;
-  status: 'Inpatient' | 'Outpatient';
+  status: 'Inpatient' | 'Outpatient' | 'Discharged';
   bloodType: string;
   allergies?: string;
 }
@@ -101,13 +101,17 @@ export interface Bill {
 
 export interface LabTest {
   id: string;
+  patientId?: string;
   patientName: string;
+  doctorId?: string;
   testName: string;
   doctorName: string;
   date: string;
   department: 'Pathology' | 'Radiology' | 'Microbiology' | 'Biochemistry'; 
   priority: 'Normal' | 'Urgent';
   status: 'Pending' | 'In Progress' | 'Completed';
+  resultText?: string;
+  resultFileUrl?: string;
 }
 
 export interface Medicine {
@@ -115,6 +119,7 @@ export interface Medicine {
   name: string;
   category: string;
   stock: number;
+  minRequiredStock?: number;
   unit: string;
   price: number;
   expiryDate: string;
@@ -127,7 +132,14 @@ export interface Prescription {
   patientName: string;
   date: string;
   time: string;
-  medicines: { name: string; dosage: string; quantity: number }[];
+  medicines: {
+    name: string;
+    dosage: string;
+    quantity: number;
+    unitPrice?: number;
+    lineTotal?: number;
+  }[];
+  totalCost?: number;
   status: 'Dispensed' | 'Pending';
   doctorName: string;
   priority: 'Normal' | 'Urgent';

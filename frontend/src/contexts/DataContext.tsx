@@ -42,11 +42,20 @@ import {
     updatePrescriptionStatus as apiUpdatePrescriptionStatus,
     createLabTest,
     updateLabTestStatus as apiUpdateLabTestStatus,
+    updateMedicineStock as apiUpdateMedicineStock,
     updateBedStatus,
     updatePatientStatus,
     upsertVitals,
     AUTH_STORAGE_KEY 
 } from '../services/api';
+
+const DEFAULT_MIN_REQUIRED_STOCK = 20;
+
+const getMedicineStatusFromStock = (stock: number, minRequiredStock: number): Medicine['status'] => {
+  if (stock <= 0) return 'Out of Stock';
+  if (stock <= minRequiredStock) return 'Low Stock';
+  return 'In Stock';
+};
 
 interface DataContextType {
   patients: Patient[];
@@ -72,7 +81,8 @@ interface DataContextType {
   addPrescription: (rx: Prescription) => void;
   updatePrescriptionStatus: (id: string, status: Prescription['status']) => void;
   addLabTest: (test: LabTest) => void;
-  updateLabTestStatus: (id: string, status: LabTest['status']) => void;
+  updateLabTestStatus: (id: string, status: LabTest['status'], resultText?: string, resultFileUrl?: string) => void;
+  restockMedicine: (medicineId: string, quantity: number) => void;
   admitPatient: (bedId: string, patientId: string, patientName: string) => void;
   dischargePatient: (bedId: string) => void;
   blockBedForMaintenance: (bedId: string) => void;
@@ -177,7 +187,18 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       if (Array.isArray(dbMedicines)) {
-        setMedicines(dbMedicines.map(m => ({ ...m, id: String(m.id), expiryDate: m.expiry_date })));
+        setMedicines(dbMedicines.map(m => {
+          const stock = Number(m.stock || 0);
+          const minRequiredStock = Number(m.min_required_stock || m.minRequiredStock || DEFAULT_MIN_REQUIRED_STOCK);
+          return {
+            ...m,
+            id: String(m.id),
+            stock,
+            minRequiredStock,
+            expiryDate: m.expiry_date,
+            status: getMedicineStatusFromStock(stock, minRequiredStock),
+          };
+        }));
       }
 
       if (Array.isArray(dbBeds)) {
@@ -193,11 +214,37 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       if (Array.isArray(dbLabTests)) {
-        setLabTests(dbLabTests.map(t => ({ ...t, id: String(t.id), patientId: String(t.patient_id), doctorId: String(t.doctor_id), date: t.test_date, patientName: t.patient_name || 'Unknown Patient', testName: t.test_name, doctorName: t.doctor_name || 'Unknown Doctor' })));
+        setLabTests(dbLabTests.map(t => ({
+          ...t,
+          id: String(t.id),
+          patientId: String(t.patient_id),
+          doctorId: String(t.doctor_id),
+          date: t.test_date,
+          patientName: t.patient_name || 'Unknown Patient',
+          testName: t.test_name,
+          doctorName: t.doctor_name || 'Unknown Doctor',
+          resultText: t.result_text || undefined,
+          resultFileUrl: t.result_file_url || undefined,
+        })));
       }
 
       if (Array.isArray(dbPrescriptions)) {
-        setPrescriptions(dbPrescriptions.map(p => ({ ...p, id: String(p.id), patientId: String(p.patient_id), doctorId: String(p.doctor_id), patientName: p.patient_name || 'Unknown Patient', doctorName: p.doctor_name || 'Unknown Doctor', medicines: p.medicines || [] })));
+        setPrescriptions(dbPrescriptions.map(p => ({
+          ...p,
+          id: String(p.id),
+          patientId: String(p.patient_id),
+          doctorId: String(p.doctor_id),
+          patientName: p.patient_name || 'Unknown Patient',
+          doctorName: p.doctor_name || 'Unknown Doctor',
+          totalCost: typeof p.total_cost === 'number' ? p.total_cost : (typeof p.totalCost === 'number' ? p.totalCost : 0),
+          medicines: (p.medicines || []).map((m: any) => ({
+            name: m.name,
+            dosage: m.dosage,
+            quantity: Number(m.quantity || 0),
+            unitPrice: typeof m.unit_price === 'number' ? m.unit_price : (typeof m.unitPrice === 'number' ? m.unitPrice : 0),
+            lineTotal: typeof m.line_total === 'number' ? m.line_total : (typeof m.lineTotal === 'number' ? m.lineTotal : 0),
+          })),
+        })));
       }
 
       if (Array.isArray(dbBills)) {
@@ -364,15 +411,47 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [getToken, patients, refreshAllData]);
 
-  const updateLabTestStatus = useCallback(async (id: string, status: LabTest['status']) => {
+  const updateLabTestStatus = useCallback(async (id: string, status: LabTest['status'], resultText?: string, resultFileUrl?: string) => {
     const token = getToken();
-    if (!token) { setLabTests(prev => prev.map(t => t.id === id ? { ...t, status } : t)); return; }
+    if (!token) {
+      setLabTests(prev => prev.map(t => t.id === id ? { ...t, status, resultText: resultText ?? t.resultText, resultFileUrl: resultFileUrl ?? t.resultFileUrl } : t));
+      return;
+    }
     try {
-      await apiUpdateLabTestStatus(token, id, status);
+      await apiUpdateLabTestStatus(token, id, status, resultText, resultFileUrl);
       await refreshAllData(token);
     } catch (err) {
       console.error('Failed to update lab test status:', err);
-      setLabTests(prev => prev.map(t => t.id === id ? { ...t, status } : t));
+      setLabTests(prev => prev.map(t => t.id === id ? { ...t, status, resultText: resultText ?? t.resultText, resultFileUrl: resultFileUrl ?? t.resultFileUrl } : t));
+    }
+  }, [getToken, refreshAllData]);
+
+  const restockMedicine = useCallback(async (medicineId: string, quantity: number) => {
+    const safeQuantity = Math.max(0, Math.floor(Number(quantity || 0)));
+    if (safeQuantity <= 0) return;
+
+    const token = getToken();
+    if (!token) {
+      setMedicines(prev => prev.map(m => {
+        if (m.id !== medicineId) return m;
+        const newStock = m.stock + safeQuantity;
+        const minRequiredStock = m.minRequiredStock ?? DEFAULT_MIN_REQUIRED_STOCK;
+        return { ...m, stock: newStock, status: getMedicineStatusFromStock(newStock, minRequiredStock) };
+      }));
+      return;
+    }
+
+    try {
+      await apiUpdateMedicineStock(token, medicineId, safeQuantity);
+      await refreshAllData(token);
+    } catch (err) {
+      console.error('Failed to restock medicine:', err);
+      setMedicines(prev => prev.map(m => {
+        if (m.id !== medicineId) return m;
+        const newStock = m.stock + safeQuantity;
+        const minRequiredStock = m.minRequiredStock ?? DEFAULT_MIN_REQUIRED_STOCK;
+        return { ...m, stock: newStock, status: getMedicineStatusFromStock(newStock, minRequiredStock) };
+      }));
     }
   }, [getToken, refreshAllData]);
 
@@ -400,7 +479,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setBeds(prev => {
         const bed = prev.find(b => b.id === bedId);
         if (bed && bed.patientId) {
-           setPatients(pp => pp.map(p => p.id === bed.patientId ? { ...p, status: 'Outpatient' } : p));
+           setPatients(pp => pp.map(p => p.id === bed.patientId ? { ...p, status: 'Discharged' } : p));
         }
         return prev.map(b => b.id === bedId ? { ...b, status: 'Available', patientId: undefined, patientName: undefined } : b);
       });
@@ -411,7 +490,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const bed = beds.find(b => b.id === bedId);
       await updateBedStatus(token, bedId, 'Maintenance');
       if (bed?.patientId) {
-        await updatePatientStatus(token, bed.patientId, 'Outpatient');
+        await updatePatientStatus(token, bed.patientId, 'Discharged');
       }
       await refreshAllData(token);
     } catch (err) {
@@ -483,6 +562,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       updatePrescriptionStatus,
       addLabTest,
       updateLabTestStatus,
+      restockMedicine,
       admitPatient,
       dischargePatient,
       blockBedForMaintenance,

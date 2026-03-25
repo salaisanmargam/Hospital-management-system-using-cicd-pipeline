@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS patients (
   last_visit        DATE,
   medical_condition VARCHAR(255),
   status            VARCHAR(20)  DEFAULT 'Outpatient'
-                      CHECK (status IN ('Inpatient','Outpatient')),
+                      CHECK (status IN ('Inpatient','Outpatient','Discharged')),
   blood_type        VARCHAR(5),
   allergies         TEXT,
   user_id           INT UNIQUE,   -- links a Patient-role user to their clinical record
@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS medicines (
   name        VARCHAR(100) NOT NULL,
   category    VARCHAR(50),
   stock       INT          DEFAULT 0,
+  min_required_stock INT   DEFAULT 20,
   unit        VARCHAR(20),   -- e.g. "Tablets", "Vials"
   price       DECIMAL(10,2),
   expiry_date DATE,
@@ -156,6 +157,7 @@ CREATE TABLE IF NOT EXISTS lab_tests (
                     CHECK (priority IN ('Normal','Urgent')),
   status          VARCHAR(30) DEFAULT 'Pending'
                     CHECK (status IN ('Pending','In Progress','Completed')),
+  result_text     TEXT,
   result_file_url VARCHAR(255),
   FOREIGN KEY (patient_id) REFERENCES patients(id),
   FOREIGN KEY (doctor_id)  REFERENCES users(id)

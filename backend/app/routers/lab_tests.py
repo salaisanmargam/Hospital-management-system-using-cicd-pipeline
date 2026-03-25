@@ -65,8 +65,8 @@ def create_lab_test(payload: dict, conn=Depends(get_conn), user=Depends(get_curr
     cursor = dict_cursor(conn)
     cursor.execute(
         """
-        INSERT INTO lab_tests (patient_id, doctor_id, test_name, department, test_date, priority, status)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO lab_tests (patient_id, doctor_id, test_name, department, test_date, priority, status, result_text, result_file_url)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id
         """,
         (
@@ -77,6 +77,8 @@ def create_lab_test(payload: dict, conn=Depends(get_conn), user=Depends(get_curr
             payload.get("test_date"),
             payload.get("priority", "Normal"),
             payload.get("status", "Pending"),
+            payload.get("result_text"),
+            payload.get("result_file_url"),
         ),
     )
     new_id = cursor.fetchone()["id"]
@@ -114,8 +116,15 @@ def update_test_status(test_id: int, payload: dict, conn=Depends(get_conn), user
             )
 
     cursor.execute(
-        "UPDATE lab_tests SET status = %s WHERE id = %s",
-        (payload.get("status"), test_id),
+        """
+        UPDATE lab_tests
+        SET
+            status = %s,
+            result_text = COALESCE(%s, result_text),
+            result_file_url = COALESCE(%s, result_file_url)
+        WHERE id = %s
+        """,
+        (payload.get("status"), payload.get("result_text"), payload.get("result_file_url"), test_id),
     )
     if cursor.rowcount == 0:
         cursor.close()
