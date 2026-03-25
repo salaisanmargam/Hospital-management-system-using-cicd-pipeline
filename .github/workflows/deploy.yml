@@ -111,9 +111,34 @@ jobs:
       - name: Deploy to Vercel
         id: vercel-deploy
         run: |
-          URL=$(vercel deploy --prebuilt \
-            ${{ github.ref_name == 'main' && '--prod' || '' }} \
-            --token=${{ secrets.VERCEL_TOKEN }})
+          URL=""
+          for attempt in 1 2 3; do
+            echo "Deploy attempt ${attempt}/3..."
+            set +e
+            DEPLOY_OUTPUT=$(vercel deploy --prebuilt --yes \
+              ${{ github.ref_name == 'main' && '--prod' || '' }} \
+              --token=${{ secrets.VERCEL_TOKEN }} 2>&1)
+            STATUS=$?
+            set -e
+
+            echo "$DEPLOY_OUTPUT"
+
+            if [ $STATUS -eq 0 ]; then
+              URL=$(echo "$DEPLOY_OUTPUT" | tail -n 1)
+              break
+            fi
+
+            if [ $attempt -lt 3 ]; then
+              echo "Transient deploy failure, retrying in 10s..."
+              sleep 10
+            fi
+          done
+
+          if [ -z "$URL" ]; then
+            echo "Vercel deploy failed after 3 attempts"
+            exit 1
+          fi
+
           echo "deploymentUrl=$URL" >> "$GITHUB_OUTPUT"
           echo "Deployed to: $URL"
         env:
