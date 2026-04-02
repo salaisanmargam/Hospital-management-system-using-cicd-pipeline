@@ -248,7 +248,34 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       if (Array.isArray(dbBills)) {
-        setBills(dbBills.map(b => ({ ...b, id: String(b.id), patientId: String(b.patient_id), patientName: b.patient_name || 'Unknown Patient' })));
+        setBills(
+          dbBills.map(b => {
+            const amount = Number(b.amount || 0);
+            const paidAmount = Number(b.paid_amount || 0);
+            const computedBalance = Math.max(amount - paidAmount, 0);
+            const balanceAmount = b.balance_amount !== undefined ? Number(b.balance_amount || 0) : computedBalance;
+            const derivedDueDate = b.due_date
+              || (b.date ? new Date(new Date(b.date).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10) : undefined);
+
+            return {
+              ...b,
+              id: String(b.id),
+              patientId: String(b.patient_id),
+              patientName: b.patient_name || 'Unknown Patient',
+              dueDate: derivedDueDate,
+              amount,
+              paidAmount,
+              balanceAmount,
+              appointmentAmount: Number(b.appointment_amount || 0),
+              nurseMedicationAmount: Number(b.nurse_medication_amount || 0),
+              labAmount: Number(b.lab_amount || 0),
+              bedAmount: Number(b.bed_amount || 0),
+              medicineAmount: Number(b.medicine_amount || 0),
+              nurseMedicationOrders: Number(b.nurse_medication_orders || 0),
+              bedDays: Number(b.bed_days || 0),
+            };
+          })
+        );
       }
 
       if (Array.isArray(dbLogs)) {

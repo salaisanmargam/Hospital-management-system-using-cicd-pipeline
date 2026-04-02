@@ -264,6 +264,10 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
    const isPatientAdmitted = (patientId: string) =>
       beds.some(b => b.status === 'Occupied' && String(b.patientId) === String(patientId));
 
+   const formatAge = (age?: number) => (age === null || age === undefined ? '—' : `${age}`);
+   const formatGender = (gender?: string) => gender || '—';
+   const formatBloodType = (bloodType?: string) => bloodType || '—';
+
    return (
       <div className="space-y-6">
          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 animate-fade-in-up">
@@ -318,6 +322,9 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
                      <thead>
                         <tr className="bg-slate-50/80 text-slate-400 text-xs uppercase font-semibold tracking-wider">
                            <th className="px-6 py-4">Patient Name</th>
+                           <th className="px-6 py-4">Age</th>
+                           <th className="px-6 py-4">Gender</th>
+                           <th className="px-6 py-4">Blood Group</th>
                            {isNurse && <th className="px-6 py-4">Attending Doctor</th>}
                            {isNurse && <th className="px-6 py-4">Ward / Bed</th>}
                            <th className="px-6 py-4">Condition</th>
@@ -338,11 +345,21 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
                                        )}
                                     </div>
                                     <div>
-                                       <p className="font-semibold text-slate-900 text-sm">{patient.name}</p>
+                                       <button
+                                          type="button"
+                                          onClick={(e) => { e.stopPropagation(); handlePatientClick(patient); }}
+                                          className="font-semibold text-slate-900 text-sm hover:text-sky-700 hover:underline underline-offset-2 transition"
+                                          title="Open full patient details"
+                                       >
+                                          {patient.name}
+                                       </button>
                                        <p className="text-xs text-slate-400 font-mono">ID: {patient.id.toUpperCase()}</p>
                                     </div>
                                  </div>
                               </td>
+                              <td className="px-6 py-4 text-sm text-slate-700">{formatAge(patient.age)}</td>
+                              <td className="px-6 py-4 text-sm text-slate-700">{formatGender(patient.gender)}</td>
+                              <td className="px-6 py-4 text-sm text-slate-700">{formatBloodType(patient.bloodType)}</td>
                               {isNurse && (
                                  <td className="px-6 py-4 text-sm">
                                     <div className="flex items-center gap-2 text-slate-700">
@@ -425,6 +442,9 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
                            <h2 className="text-2xl font-display font-bold">{selectedPatient.name}</h2>
                            <div className="flex flex-wrap gap-4 text-sm text-slate-300 mt-2">
                               <span className="flex items-center gap-1"><UserIcon size={14} /> ID: {selectedPatient.id.toUpperCase()}</span>
+                              <span className="flex items-center gap-1"><UserIcon size={14} /> Age: {formatAge(selectedPatient.age)}</span>
+                              <span className="flex items-center gap-1"><UserIcon size={14} /> Gender: {formatGender(selectedPatient.gender)}</span>
+                              <span className="flex items-center gap-1"><AlertCircle size={14} /> Blood: {formatBloodType(selectedPatient.bloodType)}</span>
                               <span className="flex items-center gap-1"><AlertCircle size={14} /> {selectedPatient.condition}</span>
                               <span className="flex items-center gap-1"><Stethoscope size={14} /> Dr: {getAttendingDoctor(selectedPatient.name)}</span>
                               <span className="bg-white/10 px-2.5 py-0.5 rounded-full text-xs text-white border border-white/10">
@@ -892,7 +912,7 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
 
                   <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
                      {activeTab === 'overview' && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
+                        <div className="grid grid-cols-1 gap-6 animate-fade-in">
                            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
                               <h3 className="font-display font-bold text-slate-800 mb-3 flex items-center gap-2"><Activity size={18} className="text-sky-500" /> Current Condition</h3>
                               <p className="text-slate-600">{selectedPatient.condition}</p>
@@ -900,11 +920,6 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
                                  <p className="text-xs text-slate-400 uppercase font-semibold tracking-wider">Allergies</p>
                                  <p className="text-red-500 font-medium">{selectedPatient.allergies}</p>
                               </div>
-                           </div>
-                           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-                              <h3 className="font-display font-bold text-slate-800 mb-3 flex items-center gap-2"><UserIcon size={18} className="text-sky-500" /> Contact Info</h3>
-                              <p className="text-slate-600">{selectedPatient.contact}</p>
-                              <p className="text-sm text-slate-500 mt-1">Emergency Contact: Jane Doe (Wife) - 555-9999</p>
                            </div>
                         </div>
                      )}

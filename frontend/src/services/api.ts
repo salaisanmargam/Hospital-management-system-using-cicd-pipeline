@@ -346,6 +346,56 @@ export const listBills = async (token: string): Promise<any[]> =>
 export const createBill = async (token: string, payload: any): Promise<any> =>
   request<any>('/bills/', { method: 'POST', headers: authHeaders(token), body: JSON.stringify(payload) });
 
+export const getBillDetails = async (token: string, patientId: string): Promise<any> =>
+  request<any>(`/bills/${patientId}/details`, { method: 'GET', headers: authHeaders(token) });
+
+export const createBillPayment = async (
+  token: string,
+  patientId: string,
+  payload: { amount: number; method: string; notes?: string; paid_at?: string },
+): Promise<any> =>
+  request<any>(`/bills/${patientId}/payments`, {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+
+export const getBillingContributions = async (token: string, patientId: string): Promise<any> =>
+  request<any>(`/bills/${patientId}/contributions`, { method: 'GET', headers: authHeaders(token) });
+
+export const generateFinalBill = async (token: string, patientId: string): Promise<any> =>
+  request<any>(`/bills/${patientId}/generate`, { method: 'POST', headers: authHeaders(token) });
+
+export const downloadBillPdf = async (
+  token: string,
+  patientId: string,
+): Promise<{ blob: Blob; filename?: string }> => {
+  const response = await fetch(`${API_BASE}/bills/${patientId}/pdf`, {
+    method: 'GET',
+    headers: authHeaders(token),
+  });
+
+  if (!response.ok) {
+    let message = `Failed to download PDF (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data?.detail) message = data.detail;
+    } catch {
+      // Ignore JSON parse errors for non-JSON responses.
+    }
+    throw new Error(message);
+  }
+
+  const contentDisposition = response.headers.get('content-disposition') || '';
+  const filenameMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)|filename=([^;]+)/i);
+  const filename = decodeURIComponent((filenameMatch?.[1] || filenameMatch?.[2] || '').replace(/"/g, '').trim());
+
+  return {
+    blob: await response.blob(),
+    filename: filename || undefined,
+  };
+};
+
 // ─── Vitals ───────────────────────────────────────────────────────────────────
 
 export const listVitals = async (token: string): Promise<any[]> =>

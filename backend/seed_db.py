@@ -197,6 +197,18 @@ def seed_db():
                 (demo_contacts,),
             )
             cursor.execute(
+                "DELETE FROM bill_payments WHERE patient_id IN (SELECT id FROM patients WHERE contact = ANY(%s))",
+                (demo_contacts,),
+            )
+            cursor.execute(
+                "DELETE FROM nurse_medication_administrations WHERE patient_id IN (SELECT id FROM patients WHERE contact = ANY(%s))",
+                (demo_contacts,),
+            )
+            cursor.execute(
+                "DELETE FROM bed_stays WHERE patient_id IN (SELECT id FROM patients WHERE contact = ANY(%s))",
+                (demo_contacts,),
+            )
+            cursor.execute(
                 "DELETE FROM vitals WHERE patient_id IN (SELECT id FROM patients WHERE contact = ANY(%s))",
                 (demo_contacts,),
             )
@@ -323,6 +335,20 @@ def seed_db():
                    WHERE ward = 'ICU' AND bed_number = '301'
                    AND NOT EXISTS (SELECT 1 FROM beds WHERE patient_id = %s)""",
                 (inpatient_id, inpatient_id),
+            )
+            cursor.execute(
+                """
+                INSERT INTO bed_stays (patient_id, bed_id, admitted_at, daily_rate)
+                SELECT b.patient_id, b.id, NOW() - INTERVAL '2 days', 1500
+                FROM beds b
+                WHERE b.id IN (
+                    SELECT id FROM beds WHERE ward = 'ICU' AND bed_number = '301'
+                )
+                  AND b.patient_id IS NOT NULL
+                  AND NOT EXISTS (
+                    SELECT 1 FROM bed_stays bs WHERE bs.bed_id = b.id AND bs.patient_id = b.patient_id AND bs.discharged_at IS NULL
+                  )
+                """
             )
             conn.commit()
 
@@ -499,6 +525,67 @@ def seed_db():
             )
             conn.commit()
         print("✓ Bills seeded")
+
+        # ── Bill Payments (transaction records) ─────────────────
+        payments_data = []
+        for idx, patient_row in enumerate(demo_patient_rows):
+            if idx % 2 == 0:
+                patient_id = patient_row[0]
+                paid_amount = round(120.0 + (idx * 22.5), 2)
+                method = "UPI" if idx % 3 == 0 else "Cash"
+                payments_data.append(
+                    (
+                        patient_id,
+                        paid_amount,
+                        f"2026-03-{3 + (idx % 20):02d} 10:30:00",
+                        method,
+                        "Seeded payment",
+                    )
+                )
+
+        if payments_data:
+            psycopg2.extras.execute_batch(
+                cursor,
+                """
+                INSERT INTO bill_payments (patient_id, amount, paid_at, method, notes)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                payments_data,
+            )
+            conn.commit()
+        print("✓ Bill payments seeded")
+
+        # ── Nurse Medication Administrations (exact charge events) ─
+        cursor.execute("SELECT id, name, price FROM medicines ORDER BY id LIMIT 8")
+        medicine_rows = cursor.fetchall() or []
+        med_events = []
+        for idx, patient_row in enumerate(demo_patient_rows[:12]):
+            if not medicine_rows:
+                break
+            med = medicine_rows[idx % len(medicine_rows)]
+            med_events.append(
+                (
+                    patient_row[0],
+                    med[0],
+                    float(1 + (idx % 3)),
+                    float(med[2] or 0),
+                    f"2026-03-{5 + (idx % 20):02d} 08:45:00",
+                    "Seeded administration event",
+                )
+            )
+
+        if med_events:
+            psycopg2.extras.execute_batch(
+                cursor,
+                """
+                INSERT INTO nurse_medication_administrations
+                    (patient_id, medicine_id, quantity, unit_price, administered_at, notes)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                med_events,
+            )
+            conn.commit()
+        print("✓ Nurse medication events seeded")
 
         # ── Vitals ────────────────────────────────────────────────
         for idx, patient_row in enumerate(demo_patient_rows):

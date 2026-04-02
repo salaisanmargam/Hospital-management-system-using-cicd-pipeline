@@ -93,10 +93,100 @@ export interface StatMetric {
 
 export interface Bill {
   id: string;
+  patientId: string;
   patientName: string;
   date: string;
+  dueDate?: string;
   amount: number;
   status: 'Paid' | 'Pending' | 'Overdue';
+  paidAmount?: number;
+  balanceAmount?: number;
+  appointmentAmount?: number;
+  nurseMedicationAmount?: number;
+  labAmount?: number;
+  bedAmount?: number;
+  medicineAmount?: number;
+  nurseMedicationOrders?: number;
+  bedDays?: number;
+}
+
+export interface BillDetailResponse {
+  summary: Bill;
+  appointments: Array<{
+    id: number;
+    appointment_date: string;
+    appointment_time?: string;
+    type: string;
+    status: string;
+    doctor_name?: string;
+    amount: number;
+  }>;
+  nurse_medications: Array<{
+    id: number;
+    administered_at: string;
+    quantity: number;
+    unit_price: number;
+    line_total: number;
+    medicine_name?: string;
+    administered_by_name?: string;
+    nurse_order_id?: number;
+  }>;
+  bed_stays: Array<{
+    id: number;
+    admitted_at: string;
+    discharged_at?: string;
+    daily_rate: number;
+    ward?: string;
+    bed_number?: string;
+    days: number;
+    line_total: number;
+  }>;
+  medicine_items: Array<{
+    prescription_id: number;
+    date: string;
+    status: string;
+    item_id: number;
+    medicine_name: string;
+    dosage?: string;
+    quantity: number;
+    unit_price: number;
+    line_total: number;
+  }>;
+  lab_tests: Array<{
+    id: number;
+    test_date: string;
+    test_name: string;
+    department: string;
+    priority: string;
+    status: string;
+    line_total: number;
+  }>;
+  payments: Array<{
+    id: number;
+    amount: number;
+    paid_at: string;
+    method: string;
+    notes?: string;
+    received_by_name?: string;
+  }>;
+}
+
+export interface BillingContributionItem {
+  id: number;
+  source_role: string;
+  source_module: string;
+  source_id: string;
+  description: string;
+  amount: number;
+  event_date?: string;
+  status: string;
+  submitted_at?: string;
+}
+
+export interface BillingContributionResponse {
+  patient_id: string;
+  total_amount: number;
+  items: BillingContributionItem[];
 }
 
 export interface LabTest {

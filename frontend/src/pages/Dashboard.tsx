@@ -177,7 +177,7 @@ const normalizeLabDepartment = (value?: string): LabDepartment | undefined => {
 const DoctorDashboard: React.FC<{ user: User; myAppointments: any[]; myPatientsCount: number }> = ({
   user, myAppointments, myPatientsCount,
 }) => {
-  const { staff, patients, updateAppointmentStatus } = useData();
+  const { staff, patients, beds, updateAppointmentStatus } = useData();
 
   const [orderModal, setOrderModal] = useState<{ nurse: Staff } | null>(null);
   const [orderForm, setOrderForm] = useState({
@@ -190,6 +190,13 @@ const DoctorDashboard: React.FC<{ user: User; myAppointments: any[]; myPatientsC
   const [orderSuccess, setOrderSuccess] = useState('');
 
   const shiftNurses = staff.filter(s => s.role === UserRole.NURSE && s.shift === (user.shift || 'Morning'));
+  const doctorPatientIds = new Set(myAppointments.map((appointment) => String(appointment.patientId)));
+  const doctorPatientNames = new Set(myAppointments.map((appointment) => String(appointment.patientName || '').toLowerCase()));
+  const assignedBeds = beds.filter((bed) => {
+    const byId = bed.patientId ? doctorPatientIds.has(String(bed.patientId)) : false;
+    const byName = bed.patientName ? doctorPatientNames.has(String(bed.patientName).toLowerCase()) : false;
+    return byId || byName;
+  });
 
   const getToken = () => {
     const stored = localStorage.getItem(AUTH_STORAGE_KEY);
@@ -310,47 +317,44 @@ const DoctorDashboard: React.FC<{ user: User; myAppointments: any[]; myPatientsC
           )}
         </div>
 
-        {/* My Nursing Team */}
+        {/* Wards & Beds */}
         <div className="glass-card rounded-2xl overflow-hidden animate-fade-in-up opacity-0" style={{ animationDelay: '0.3s', animationFillMode: 'forwards' }}>
-          <div className="p-4 border-b border-slate-200/50 bg-gradient-to-r from-rose-50 to-pink-50 flex justify-between items-center">
-            <h3 className="font-display font-bold text-rose-900 flex items-center gap-2">
-              <HeartPulse size={18} className="text-rose-500" />
-              My Nursing Team
+          <div className="p-4 border-b border-slate-200/50 bg-gradient-to-r from-blue-50 to-sky-50 flex justify-between items-center">
+            <h3 className="font-display font-bold text-blue-900 flex items-center gap-2">
+              <BedDouble size={18} className="text-blue-600" />
+              Wards & Beds
             </h3>
-            <span className="text-[10px] font-bold text-rose-500 uppercase bg-white px-2.5 py-1 rounded-full border border-rose-100 tracking-wider">
-              {user.shift || 'Morning'} Shift
+            <span className="text-[10px] font-bold text-blue-600 uppercase bg-white px-2.5 py-1 rounded-full border border-blue-100 tracking-wider">
+              {assignedBeds.length} Assigned
             </span>
           </div>
           <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto">
-            {shiftNurses.length > 0 ? (
-              shiftNurses.map(nurse => (
-                <div key={nurse.id} className="p-4 hover:bg-sky-50/50 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <img src={nurse.avatarUrl} alt={nurse.name} className="w-10 h-10 rounded-full border-2 border-white shadow-sm object-cover" />
-                      <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${nurse.status === 'Active' ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
+            {assignedBeds.length > 0 ? (
+              assignedBeds.map((bed) => (
+                <div key={bed.id} className="p-4 hover:bg-sky-50/50 transition-colors">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-900 truncate">{bed.patientName || 'Unassigned'}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{bed.ward} - Bed {bed.number}</p>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-slate-900 truncate">{nurse.name}</p>
-                      <p className="text-xs text-slate-500">{nurse.department}</p>
-                    </div>
+                    <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-full border ${
+                      bed.status === 'Occupied'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : bed.status === 'Maintenance'
+                          ? 'bg-amber-50 text-amber-700 border-amber-200'
+                          : 'bg-slate-50 text-slate-600 border-slate-200'
+                    }`}>
+                      {bed.status}
+                    </span>
                   </div>
-                  <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500">
-                    <span className="flex items-center gap-1"><Phone size={11} />{nurse.contact || '—'}</span>
-                    <button
-                      onClick={() => handleOpenOrder(nurse)}
-                      className="flex items-center gap-1 px-2.5 py-1 bg-teal-600 text-white rounded-lg text-xs font-semibold hover:bg-teal-700 transition shrink-0"
-                      title={`Send care order to ${nurse.name}`}
-                    >
-                      <ClipboardList size={12} /> Assign Order
-                    </button>
-                  </div>
+                  <div className="mt-2 text-xs text-slate-500">Patient ID: {bed.patientId || '—'}</div>
                 </div>
               ))
             ) : (
               <div className="p-8 text-center">
-                <HeartPulse className="mx-auto text-slate-300 mb-2" size={28} />
-                <p className="text-sm text-slate-500">No nurses on your current shift.</p>
+                <BedDouble className="mx-auto text-slate-300 mb-2" size={28} />
+                <p className="text-sm text-slate-500">No ward or bed assignment found for your patients.</p>
+                <p className="text-xs text-slate-400 mt-1">Beds will appear when your patients are admitted.</p>
               </div>
             )}
           </div>

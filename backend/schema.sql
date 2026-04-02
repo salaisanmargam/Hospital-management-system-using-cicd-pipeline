@@ -147,6 +147,84 @@ CREATE TABLE IF NOT EXISTS bills (
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS billing_contributions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  patient_id INT NOT NULL,
+  source_role VARCHAR(30) NOT NULL,
+  source_module VARCHAR(30) NOT NULL,
+  source_id VARCHAR(50) NOT NULL,
+  description TEXT NOT NULL,
+  amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+  event_date DATE,
+  submitted_by INT NULL,
+  submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  status ENUM('Submitted','Accepted','Rejected') DEFAULT 'Submitted',
+  UNIQUE KEY uq_billing_source (source_module, source_id),
+  FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+  FOREIGN KEY (submitted_by) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_billing_contrib_patient (patient_id, submitted_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS finalized_bills (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  patient_id INT NOT NULL,
+  generated_by INT NULL,
+  generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  due_date DATE,
+  total_amount DECIMAL(10, 2) NOT NULL,
+  paid_amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+  balance_amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+  status ENUM('Paid','Pending','Overdue') NOT NULL,
+  snapshot_json JSON,
+  FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+  FOREIGN KEY (generated_by) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_finalized_bills_patient (patient_id, generated_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS bill_payments (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  patient_id INT NOT NULL,
+  amount DECIMAL(10, 2) NOT NULL,
+  paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  method ENUM('Cash','Card','UPI','NetBanking','Insurance','Other') DEFAULT 'Cash',
+  notes TEXT,
+  received_by INT NULL,
+  FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+  FOREIGN KEY (received_by) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_bill_payments_patient_paid_at (patient_id, paid_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS nurse_medication_administrations (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  patient_id INT NOT NULL,
+  nurse_order_id INT NULL,
+  medicine_id INT NOT NULL,
+  quantity DECIMAL(10, 2) NOT NULL,
+  unit_price DECIMAL(10, 2) NOT NULL,
+  administered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  administered_by INT NULL,
+  notes TEXT,
+  FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+  FOREIGN KEY (nurse_order_id) REFERENCES nurse_orders(id) ON DELETE SET NULL,
+  FOREIGN KEY (medicine_id) REFERENCES medicines(id),
+  FOREIGN KEY (administered_by) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_nurse_med_admin_patient_time (patient_id, administered_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS bed_stays (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  patient_id INT NOT NULL,
+  bed_id INT NOT NULL,
+  admitted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  discharged_at TIMESTAMP NULL,
+  daily_rate DECIMAL(10, 2) NOT NULL DEFAULT 1500.00,
+  created_by INT NULL,
+  FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+  FOREIGN KEY (bed_id) REFERENCES beds(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_bed_stays_patient_dates (patient_id, admitted_at, discharged_at)
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS audit_logs (
   id INT AUTO_INCREMENT PRIMARY KEY,
   action VARCHAR(255),

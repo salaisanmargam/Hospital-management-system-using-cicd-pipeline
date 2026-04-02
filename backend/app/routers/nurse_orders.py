@@ -39,6 +39,16 @@ class NurseOrderAssign(BaseModel):
     nurse_id: int
 
 
+class MedicationAdministrationCreate(BaseModel):
+    patient_id: int
+    medicine_id: int
+    quantity: float
+    unit_price: Optional[float] = None
+    nurse_order_id: Optional[int] = None
+    administered_at: Optional[str] = None
+    notes: Optional[str] = None
+
+
 @router.get("/")
 def list_nurse_orders(conn=Depends(get_conn), user=Depends(get_current_user)):
     cursor = dict_cursor(conn)
@@ -189,3 +199,83 @@ def get_nurse_order(order_id: int, conn=Depends(get_conn), user=Depends(get_curr
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     return order
+
+
+@router.post("/medication-admin", status_code=status.HTTP_201_CREATED)
+def record_medication_administration(
+    payload: MedicationAdministrationCreate,
+    conn=Depends(get_conn),
+    user=Depends(get_current_user),
+):
+    role = user.get("role", "")
+    if role not in ("Nurse", "Doctor", "Admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    if payload.quantity <= 0:
+        raise HTTPException(status_code=400, detail="quantity must be greater than 0")
+
+    cursor = dict_cursor(conn)
+
+    cursor.execute("SELECT id FROM patients WHERE id = %s", (payload.patient_id,))
+    if not cursor.fetchone():
+        cursor.close()
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    cursor.execute("SELECT id, price, name FROM medicines WHERE id = %s", (payload.medicine_id,))
+    medicine = cursor.fetchone()
+    if not medicine:
+        cursor.close()
+        raise HTTPException(status_code=404, detail="Medicine not found")
+
+    if payload.nurse_order_id is not None:
+        cursor.execute(
+            "SELECT id FROM nurse_orders WHERE id = %s AND patient_id = %s",
+            (payload.nurse_order_id, payload.patient_id),
+        )
+        if not cursor.fetchone():
+            cursor.close()
+            raise HTTPException(status_code=404, detail="Nurse order not found for patient")
+
+    unit_price = payload.unit_price if payload.unit_price is not None else float(medicine.get("price") or 0)
+    if unit_price < 0:
+        cursor.close()
+        raise HTTPException(status_code=400, detail="unit_price cannot be negative")
+
+    cursor.execute(
+        """
+        INSERT INTO nurse_medication_administrations
+            (patient_id, nurse_order_id, medicine_id, quantity, unit_price, administered_at, administered_by, notes)
+        VALUES (%s, %s, %s, %s, %s, COALESCE(%s::timestamptz, NOW()), %s, %s)
+        RETURNING id, patient_id, nurse_order_id, medicine_id, quantity, unit_price, administered_at, notes
+        """,
+        (
+            payload.patient_id,
+            payload.nurse_order_id,
+            payload.medicine_id,
+            payload.quantity,
+            unit_price,
+            payload.administered_at,
+            user["id"],
+            payload.notes,
+        ),
+    )
+    event = cursor.fetchone()
+
+    cursor.execute(
+        "INSERT INTO audit_logs (action, user_id, user_role, details) VALUES (%s, %s, %s, %s)",
+        (
+            "Medication administration recorded",
+            user["id"],
+            role,
+            f"Patient {payload.patient_id}, medicine {medicine.get('name')}, qty {payload.quantity}, unit price {unit_price}",
+        ),
+    )
+
+    conn.commit()
+    cursor.close()
+
+    event["quantity"] = float(event.get("quantity") or 0)
+    event["unit_price"] = float(event.get("unit_price") or 0)
+    event["line_total"] = event["quantity"] * event["unit_price"]
+    event["administered_at"] = event["administered_at"].isoformat() if event.get("administered_at") else None
+    return event
