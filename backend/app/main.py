@@ -11,8 +11,6 @@ from dotenv import load_dotenv
 _project_root = Path(__file__).resolve().parent.parent.parent  # medcore/
 load_dotenv(dotenv_path=_project_root / ".env")
 
-from contextlib import asynccontextmanager  # noqa: E402
-
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
@@ -33,17 +31,8 @@ from .routers import (  # noqa: E402
     nurse_orders,
 )
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):  # noqa: ARG001
-    try:
-        init_pool()
-    except Exception as exc:  # pragma: no cover
-        # Non-fatal: the pool will be lazily created on the first request.
-        print(f"[MedCore] DB pool init failed at startup (non-fatal): {exc}")
-    yield
 
-
-app = FastAPI(title=os.getenv("APP_NAME", "MedCore API"), lifespan=lifespan)
+app = FastAPI(title=os.getenv("APP_NAME", "MedCore API"))
 
 cors_origins = os.getenv("APP_CORS_ORIGINS", "http://localhost:5173").split(",")
 app.add_middleware(

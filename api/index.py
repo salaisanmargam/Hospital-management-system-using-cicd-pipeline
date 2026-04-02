@@ -10,10 +10,8 @@ Development: run `uvicorn app.main:app --reload` from the backend/ dir.
 import sys
 import os
 import traceback
+from contextlib import asynccontextmanager
 from fastapi import FastAPI as _FastAPI
-
-# Vercel expects a top-level ASGI symbol named `app`.
-app = _FastAPI()
 
 # Make the `backend` package importable relative to this file.
 _backend_dir = os.path.join(os.path.dirname(__file__), "..", "backend")
@@ -26,17 +24,21 @@ try:
     load_dotenv(os.path.join(_backend_dir, "..", ".env"))
 
     from app.db import init_pool
-    try:
-        init_pool()
-    except Exception as exc:
-        # Non-fatal: pool is created lazily on the first request.
-        print(f"[MedCore] DB pool init warning at cold start: {exc}")
+    
+    @asynccontextmanager
+    async def lifespan(_app: _FastAPI):
+        """Root app lifespan – ensures DB pool is initialized on cold start."""
+        try:
+            init_pool()
+        except Exception as exc:
+            print(f"[MedCore] DB pool init warning at cold start: {exc}")
+        yield
 
     from app.main import app as _fastapi_app
 
     # Mount the FastAPI app at /api so Starlette strips the prefix
     # before forwarding: /api/auth/login → /auth/login.
-    _root = _FastAPI()
+    _root = _FastAPI(lifespan=lifespan)
     _root.mount("/api", _fastapi_app)
     app = _root
 
