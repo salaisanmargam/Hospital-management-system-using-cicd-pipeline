@@ -172,6 +172,19 @@ jobs:
             exit 1
           fi
 
+          # Test health endpoint (try root first, then /api)
+          echo "Testing health endpoint..."
+          HEALTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL/health")
+          if [ "$HEALTH_CODE" = "200" ]; then
+            echo "Root /health endpoint returned 200 - API is available"
+          else
+            echo "Warning: Root /health returned $HEALTH_CODE, trying /api/health..."
+            HEALTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL/api/health")
+            if [ "$HEALTH_CODE" != "200" ]; then
+              echo "Smoke test failed: /health returned $HEALTH_CODE, /api/health returned $HEALTH_CODE"
+              exit 1
+            fi
+          fi
       # Post deployment URL as a PR comment (handy for preview deployments)
       - name: Comment deployment URL on PR
         if: github.event_name == 'pull_request'
