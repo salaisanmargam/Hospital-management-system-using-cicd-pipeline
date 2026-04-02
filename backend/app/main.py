@@ -14,7 +14,6 @@ load_dotenv(dotenv_path=_project_root / ".env")
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
-from .db import init_pool  # noqa: E402
 from .routers import (  # noqa: E402
     appointments,
     auth,
