@@ -14,10 +14,8 @@ def init_pool() -> None:
         return
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
-        raise RuntimeError(
-            "DATABASE_URL environment variable is not set. "
-            "Set it to your Neon PostgreSQL connection string."
-        )
+        print("[MedCore] DATABASE_URL not set - database pool will be unavailable.")
+        return
     try:
         _pool = ThreadedConnectionPool(
             minconn=1,
@@ -27,7 +25,7 @@ def init_pool() -> None:
         print("[MedCore] PostgreSQL connection pool initialised.")
     except Exception as e:
         print(f"[MedCore] Error initialising PostgreSQL pool: {e}")
-        raise
+        # Don't raise - allow the app to start even if DB pool fails
 
 
 def dict_cursor(conn):
@@ -39,7 +37,11 @@ def get_conn():
     """FastAPI dependency – yields a pooled connection and returns it on teardown."""
     if _pool is None:
         init_pool()
-    assert _pool is not None
+    if _pool is None:
+        raise RuntimeError(
+            "Database pool is unavailable. "
+            "Set DATABASE_URL environment variable to enable database access."
+        )
     conn = _pool.getconn()
     try:
         yield conn
