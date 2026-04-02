@@ -106,9 +106,9 @@ export const APPOINTMENTS: Appointment[] = [
 ];
 
 export const BILLS: Bill[] = [
-  { id: 'b1', patientName: 'John Doe', date: '2023-10-25', amount: 150.00, status: 'Paid' },
-  { id: 'b2', patientName: 'Robert Brown', date: '2023-10-29', amount: 5400.00, status: 'Pending' },
-  { id: 'b3', patientName: 'Emily White', date: '2023-10-20', amount: 75.00, status: 'Overdue' },
+  { id: 'b1', patientId: 'p1', patientName: 'John Doe', date: '2023-10-25', amount: 150.00, status: 'Paid' },
+  { id: 'b2', patientId: 'p3', patientName: 'Robert Brown', date: '2023-10-29', amount: 5400.00, status: 'Pending' },
+  { id: 'b3', patientId: 'p4', patientName: 'Emily White', date: '2023-10-20', amount: 75.00, status: 'Overdue' },
 ];
 
 export const LAB_TESTS: LabTest[] = [
