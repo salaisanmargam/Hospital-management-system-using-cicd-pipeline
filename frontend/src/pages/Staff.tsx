@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { Plus, Search, Phone, Clock, X, Lock, User as UserIcon, Mail, Loader2, CreditCard, Trash2, Pencil, Stethoscope, FlaskConical, ShieldPlus, Pill, ClipboardList } from 'lucide-react';
-import { UserRole, Staff as StaffType } from '../types';
-import { registerUser, AUTH_STORAGE_KEY, deleteStaffMember, updateStaffShift, updateStaffMember } from '../services/api';
+import { UserRole, Staff as StaffType, User } from '../types';
+import { registerUser, AUTH_STORAGE_KEY, deleteStaffMember, updateStaffShift, updateStaffMember, listNurseOrders, updateNurseOrderStatus } from '../services/api';
 import { useData } from '../contexts/DataContext';
 
 /* ── role-specific config ─────────────────────────────────────── */
@@ -53,7 +53,50 @@ const ROLE_META: Record<string, { icon: React.ReactNode; color: string; gradient
 type RoleTab = 'All' | 'Doctor' | 'Nurse' | 'Receptionist' | 'Lab Technician' | 'Pharmacist';
 const TABS: RoleTab[] = ['All', 'Doctor', 'Nurse', 'Receptionist', 'Lab Technician', 'Pharmacist'];
 
-export const Staff: React.FC = () => {
+const NurseOrdersList: React.FC<{ nurseId: string; userRole?: UserRole }> = ({ nurseId, userRole }) => {
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const token = localStorage.getItem(AUTH_STORAGE_KEY) || '';
+    if (token) {
+        listNurseOrders(token)
+            .then(data => setOrders(data.filter(o => o.assigned_to === nurseId && o.status !== 'Completed')))
+            .catch(console.error)
+            .finally(() => setLoading(false));
+    }
+  }, [nurseId]);
+
+  if (loading) return <div className="text-sm text-slate-500 mt-4 animate-pulse">Loading pending orders...</div>;
+  if (orders.length === 0) return <div className="text-sm text-slate-500 mt-4 italic">No pending orders for this nurse.</div>;
+
+  return (
+    <div className="mt-6 bg-slate-50 rounded-2xl p-5 border border-slate-100">
+      <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><ClipboardList size={16} className="text-sky-500"/>Pending Orders</h4>
+      <div className="space-y-3">
+        {orders.map(o => (
+          <div key={o.id} className="p-3 bg-white rounded-xl shadow-sm border border-slate-200/60">
+            <div className="flex justify-between items-start mb-1">
+                <span className="font-semibold text-slate-800 text-sm">{o.order_type}</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">{o.priority}</span>
+            </div>
+            <p className="text-slate-600 text-xs line-clamp-2 mb-2">{o.instructions}</p>
+            {userRole === UserRole.DOCTOR && (
+                <div className="flex gap-2 justify-end">
+                  <button onClick={() => {
+                        const token = localStorage.getItem(AUTH_STORAGE_KEY) || '';
+                        updateNurseOrderStatus(token, o.id, 'Cancelled').then(() => setOrders(prev => prev.filter(p => p.id !== o.id)));
+                  }} className="text-xs bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1 font-semibold rounded-lg transition-colors duration-200">Cancel Order</button>
+                </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export const Staff: React.FC<{user?: User}> = ({user}) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [viewingStaff, setViewingStaff] = useState<StaffType | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -62,7 +105,6 @@ export const Staff: React.FC = () => {
   const [activeTab, setActiveTab] = useState<RoleTab>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const { staff, refreshStaff } = useData();
-
   // ── Form state ──
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -383,8 +425,12 @@ export const Staff: React.FC = () => {
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl h-fit overflow-hidden animate-scale-in border border-slate-200/50">
               <div className={`relative h-44 bg-gradient-to-r ${vm.gradient}`}>
                 <div className="absolute top-4 right-4 flex gap-2 z-20">
-                  <button onClick={() => openEditStaff(viewingStaff)} className="p-2 bg-sky-500/80 hover:bg-sky-600 text-white rounded-full transition-colors" title="Edit Staff"><Pencil size={20} /></button>
-                  <button onClick={() => handleDeleteStaff(viewingStaff.id)} className="p-2 bg-red-500/80 hover:bg-red-600 text-white rounded-full transition-colors" title="Delete Staff"><Trash2 size={20} /></button>
+                  {user?.role === UserRole.ADMIN && (
+                    <>
+                      <button onClick={() => openEditStaff(viewingStaff)} className="p-2 bg-sky-500/80 hover:bg-sky-600 text-white rounded-full transition-colors" title="Edit Staff"><Pencil size={20} /></button>
+                      <button onClick={() => handleDeleteStaff(viewingStaff.id)} className="p-2 bg-red-500/80 hover:bg-red-600 text-white rounded-full transition-colors" title="Delete Staff"><Trash2 size={20} /></button>
+                    </>
+                  )}
                   <button onClick={() => setViewingStaff(null)} className="p-2 bg-black/20 hover:bg-black/40 text-white rounded-full transition-colors" title="Close"><X size={20} /></button>
                 </div>
               </div>
@@ -429,6 +475,8 @@ export const Staff: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+                {viewingStaff.role === 'Nurse' && <NurseOrdersList nurseId={viewingStaff.id} userRole={user?.role} />}
 
                 {viewingStaff.bio && (
                   <div className="mb-8 p-5 bg-teal-50/50 rounded-2xl border border-teal-100">

@@ -20,12 +20,15 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
   const [selectedDate, setSelectedDate] = useState('');
   const [appointmentPriority, setAppointmentPriority] = useState<'Normal' | 'Emergency'>('Normal');
   const [step, setStep] = useState(1);
+  const [receptionPatientName, setReceptionPatientName] = useState('');
+  const [receptionPatientPhone, setReceptionPatientPhone] = useState('');
 
   const isPatient = user?.role === UserRole.PATIENT;
   const isDoctor = user?.role === UserRole.DOCTOR;
   const isNurse = user?.role === UserRole.NURSE;
   const isLabTech = user?.role === UserRole.LAB_TECHNICIAN;
   const isPharmacist = user?.role === UserRole.PHARMACIST;
+  const isReceptionist = user?.role === UserRole.RECEPTIONIST;
 
   // Filter appointments based on user role
   const displayedAppointments = React.useMemo(() => {
@@ -72,11 +75,15 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
 
   const handleCreateAppointment = () => {
     if (!selectedDoctor || !selectedDept || !selectedSlot || !selectedDate) return;
+    if (isReceptionist && (!receptionPatientName || !receptionPatientPhone)) {
+       alert("Please enter patient name and phone number");
+       return;
+    }
 
     const newAppt: Appointment = {
       id: `a${Date.now()}`,
-      patientId: user?.id || 'p_guest',
-      patientName: user?.name || 'Guest Patient',
+      patientId: isReceptionist ? `p_rec_${Date.now()}` : (user?.id || 'p_guest'),
+      patientName: isReceptionist ? receptionPatientName : (user?.name || 'Guest Patient'),
       doctorId: staff.find(s => s.name === selectedDoctor)?.id || 'unknown_doc',
       doctorName: selectedDoctor,
       department: selectedDept,
@@ -214,9 +221,6 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
                     >
                       <PackageCheck size={18} /> Dispense
                     </button>
-                    <button className="w-full py-2 bg-white text-slate-700 border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-100 transition">
-                      Print Label
-                    </button>
                   </>
                 ) : (
                   <>
@@ -227,9 +231,6 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
                       <p className="text-sm font-bold text-green-700">Completed</p>
                       <p className="text-xs text-slate-400 mt-1">Dispensed on {prescription.time}</p>
                     </div>
-                    <button className="w-full py-2 bg-white text-slate-700 border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-100 transition">
-                      Print Label
-                    </button>
                   </>
                 )}
               </div>
@@ -823,6 +824,18 @@ export const Appointments: React.FC<AppointmentsProps> = ({ user }) => {
                   </div>
 
                   <div>
+                    {isReceptionist && (
+                      <div className="space-y-3 mb-4">
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-2">Patient Phone / ID</label>
+                          <input type="text" value={receptionPatientPhone} onChange={e => setReceptionPatientPhone(e.target.value)} placeholder="000-000-0000" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:border-teal-500" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-2">Patient Full Name</label>
+                          <input type="text" value={receptionPatientName} onChange={e => setReceptionPatientName(e.target.value)} placeholder="E.g. John Doe" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:border-teal-500" />
+                        </div>
+                      </div>
+                    )}
                     <label className="block text-sm font-medium text-slate-700 mb-2">Select Date</label>
                     <input
                       type="date"

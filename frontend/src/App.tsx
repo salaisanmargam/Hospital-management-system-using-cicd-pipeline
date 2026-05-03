@@ -92,16 +92,14 @@ const AppContent: React.FC = () => {
     const accessRules: Record<string, string[]> = {
       'dashboard': ['all'],
       'patients': [UserRole.ADMIN, UserRole.DOCTOR, UserRole.NURSE, UserRole.RECEPTIONIST],
-      'ward': [UserRole.ADMIN, UserRole.NURSE, UserRole.RECEPTIONIST],
+      'ward': [UserRole.ADMIN, UserRole.DOCTOR, UserRole.NURSE, UserRole.RECEPTIONIST],
       'nurse-orders': [UserRole.NURSE],
-      'staff': [UserRole.ADMIN],
+      'staff': [UserRole.ADMIN, UserRole.DOCTOR],
       'appointments': ['all'],
       'laboratory': [UserRole.ADMIN, UserRole.DOCTOR, UserRole.LAB_TECHNICIAN],
       'pharmacy': [UserRole.ADMIN, UserRole.DOCTOR, UserRole.PHARMACIST],
-      'records': [UserRole.ADMIN, UserRole.DOCTOR, UserRole.PATIENT],
       'billing': [UserRole.ADMIN, UserRole.RECEPTIONIST, UserRole.PATIENT],
       'admin': [UserRole.ADMIN],
-      'settings': ['all']
     };
 
     const allowedRoles = accessRules[activePage];
@@ -119,7 +117,7 @@ const AppContent: React.FC = () => {
       case 'billing':
         return <Billing user={user} />;
       case 'staff':
-        return <Staff />;
+        return <Staff user={user} />;
       case 'laboratory':
         return <Laboratory user={user} />;
       case 'pharmacy':

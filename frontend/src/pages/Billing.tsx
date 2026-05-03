@@ -64,6 +64,7 @@ export const Billing: React.FC<BillingProps> = ({ user }) => {
   const [contributions, setContributions] = useState<BillingContributionResponse | null>(null);
   const [isGeneratingBill, setIsGeneratingBill] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [hideZero, setHideZero] = useState(true);
 
   const displayedBills = useMemo(() => {
     return [...bills].sort((a, b) => {
@@ -90,9 +91,14 @@ export const Billing: React.FC<BillingProps> = ({ user }) => {
 
   const filteredBills = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return displayedBills;
+    const base = displayedBills.filter((bill) => {
+      if (hideZero && ((bill.amount ?? 0) <= 0)) return false;
+      return true;
+    });
 
-    return displayedBills.filter((bill) => {
+    if (!query) return base;
+
+    return base.filter((bill) => {
       const invoiceId = bill.id?.toLowerCase() || '';
       const patientName = bill.patientName?.toLowerCase() || '';
       const status = bill.status?.toLowerCase() || '';
@@ -299,6 +305,12 @@ export const Billing: React.FC<BillingProps> = ({ user }) => {
               Clear
             </button>
           )}
+          <div className="flex items-center gap-3">
+            <label className="inline-flex items-center text-sm text-slate-600 gap-2">
+              <input type="checkbox" checked={hideZero} onChange={(e) => setHideZero(e.target.checked)} className="w-4 h-4" />
+              <span>Hide zero invoices</span>
+            </label>
+          </div>
         </div>
 
         {searchQuery.trim() && (

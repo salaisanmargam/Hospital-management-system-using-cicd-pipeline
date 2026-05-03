@@ -3,8 +3,6 @@ import {
   LayoutDashboard, 
   Users, 
   Calendar, 
-  FileText, 
-  Settings, 
   Activity, 
   LogOut,
   CreditCard,
@@ -53,10 +51,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate, userRo
     { id: 'appointments', label: 'Appointments', icon: <Calendar size={20} />, allowed: ['all'] },
     { id: 'laboratory', label: 'Laboratory', icon: <FlaskConical size={20} />, allowed: [UserRole.ADMIN, UserRole.DOCTOR, UserRole.LAB_TECHNICIAN] },
     { id: 'pharmacy', label: 'Pharmacy', icon: <Pill size={20} />, allowed: [UserRole.ADMIN, UserRole.DOCTOR, UserRole.PHARMACIST] },
-    { id: 'records', label: 'Medical Records', icon: <FileText size={20} />, allowed: [UserRole.ADMIN, UserRole.DOCTOR, UserRole.PATIENT] },
     { id: 'billing', label: 'Billing & Finance', icon: <CreditCard size={20} />, allowed: [UserRole.ADMIN, UserRole.RECEPTIONIST, UserRole.PATIENT] },
     { id: 'admin', label: 'Admin Panel', icon: <Shield size={20} />, allowed: [UserRole.ADMIN] },
-    { id: 'settings', label: 'Settings', icon: <Settings size={20} />, allowed: ['all'] },
   ];
 
   const filteredItems = menuItems.filter(item => 

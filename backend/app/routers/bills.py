@@ -45,7 +45,7 @@ def _status_priority(status: str) -> int:
     return 2
 
 
-def _build_consolidated_bills(cursor, patient_ids=None):
+def _build_consolidated_bills(cursor, patient_ids=None, include_zero_amounts: bool = True):
     params = []
     where_clause = ""
     if patient_ids is not None:
@@ -221,6 +221,9 @@ def _build_consolidated_bills(cursor, patient_ids=None):
     today = date.today()
     for row in rows:
         total_amount = _to_float(row.get("amount"))
+        if not include_zero_amounts and total_amount <= 0:
+            continue
+
         paid_amount = _to_float(row.get("paid_amount"))
         balance_amount = max(total_amount - paid_amount, 0.0)
 
@@ -651,7 +654,7 @@ def list_bills(
         cursor.close()
         return []
 
-    bills = _build_consolidated_bills(cursor, scoped_patient_ids)
+    bills = _build_consolidated_bills(cursor, scoped_patient_ids, include_zero_amounts=False)
     cursor.close()
     return bills
 

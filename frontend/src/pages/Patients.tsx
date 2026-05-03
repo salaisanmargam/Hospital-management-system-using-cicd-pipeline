@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { Plus, Search, Filter, Pencil, Trash2, User as UserIcon, X, Activity, FileText, Thermometer, Syringe, Stethoscope, Clipboard, CheckCircle2, Clock, AlertCircle, RefreshCw } from 'lucide-react';
+import { Plus, Search, Filter, Pencil, Trash2, User as UserIcon, X, Activity, Thermometer, Syringe, Stethoscope, Clipboard, CheckCircle2, Clock, AlertCircle, RefreshCw } from 'lucide-react';
 import { User, UserRole, NurseOrder, NurseOrderType } from '../types';
 import { AUTH_STORAGE_KEY, updatePatient, deletePatient, listNurseOrders, updateNurseOrderStatus, createNurseOrder } from '../services/api';
 import { useData } from '../contexts/DataContext';
@@ -14,7 +14,7 @@ interface PatientsProps {
 export const Patients: React.FC<PatientsProps> = ({ user }) => {
    const { patients, appointments, beds, vitals, updateVitals, refreshPatients, isLoading } = useData();
    const [selectedPatient, setSelectedPatient] = useState<any | null>(null);
-   const [activeTab, setActiveTab] = useState<'overview' | 'vitals' | 'records' | 'orders'>('overview');
+   const [activeTab, setActiveTab] = useState<'overview' | 'vitals' | 'orders'>('overview');
 
    const [nurseTab, setNurseTab] = useState<'care' | 'meds' | 'notes' | 'orders'>('orders');
    const [showNurseModal, setShowNurseModal] = useState(false);
@@ -906,7 +906,6 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
                   <div className="flex border-b border-slate-200 bg-white">
                      <button onClick={() => setActiveTab('overview')} className={`px-6 py-3 text-sm font-medium transition-all ${activeTab === 'overview' ? 'border-b-2 border-sky-500 text-sky-700' : 'text-slate-500 hover:text-slate-700'}`}>Overview</button>
                      <button onClick={() => setActiveTab('vitals')} className={`px-6 py-3 text-sm font-medium transition-all ${activeTab === 'vitals' ? 'border-b-2 border-sky-500 text-sky-700' : 'text-slate-500 hover:text-slate-700'}`}>Vitals & Nursing</button>
-                     <button onClick={() => setActiveTab('records')} className={`px-6 py-3 text-sm font-medium transition-all ${activeTab === 'records' ? 'border-b-2 border-sky-500 text-sky-700' : 'text-slate-500 hover:text-slate-700'}`}>Medical Records</button>
                      {isDoctor && <button onClick={() => setActiveTab('orders')} className={`px-6 py-3 text-sm font-medium transition-all ${activeTab === 'orders' ? 'border-b-2 border-sky-500 text-sky-700' : 'text-slate-500 hover:text-slate-700'}`}>Nurse Orders</button>}
                   </div>
 
@@ -934,33 +933,6 @@ export const Patients: React.FC<PatientsProps> = ({ user }) => {
                                     <span className="font-mono text-slate-700">{vitals[selectedPatient.id]?.bp || '--/--'} mmHg</span>
                                     <span className="font-mono text-slate-700">{vitals[selectedPatient.id]?.heartRate || '--'} bpm</span>
                                     <span className="font-mono text-slate-700">{vitals[selectedPatient.id]?.temperature || '--'} °F</span>
-                                 </div>
-                              </div>
-                           </div>
-                        </div>
-                     )}
-
-                     {activeTab === 'records' && (
-                        <div className="space-y-6 animate-fade-in">
-                           {isDoctor && (
-                              <div className="bg-white p-5 rounded-xl border border-indigo-200 shadow-sm">
-                                 <h3 className="font-display font-bold text-indigo-800 mb-4 flex items-center gap-2"><FileText size={18} /> Add Diagnosis & Treatment</h3>
-                                 <textarea className="w-full p-4 border border-slate-200 rounded-xl text-sm h-24 focus:outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100 transition-all" placeholder="Enter clinical notes, diagnosis, or prescription..."></textarea>
-                                 <div className="mt-4 text-right">
-                                    <button className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:from-indigo-600 hover:to-purple-600 shadow-lg shadow-indigo-500/20 transition-all">Add Record</button>
-                                 </div>
-                              </div>
-                           )}
-
-                           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                              <h3 className="font-display font-bold text-slate-800 mb-3">Past Medical History</h3>
-                              <div className="space-y-4">
-                                 <div className="border-l-4 border-sky-500 pl-4 py-1">
-                                    <p className="text-sm font-bold text-slate-900">General Checkup - Oct 25, 2023</p>
-                                    <p className="text-sm text-slate-600 mt-1">Patient reported mild headaches. Prescribed Paracetamol. BP normal.</p>
-                                    <div className="mt-2 flex gap-2">
-                                       <span className="text-xs bg-slate-100 px-2.5 py-1 rounded-full text-slate-500 flex items-center gap-1"><UserIcon size={10} /> Dr. Sarah Bennett</span>
-                                    </div>
                                  </div>
                               </div>
                            </div>
