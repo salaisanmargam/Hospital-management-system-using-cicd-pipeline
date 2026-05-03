@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { Plus, Search, Filter, Pencil, Trash2, User as UserIcon, X, Activity, Thermometer, Syringe, Stethoscope, Clipboard, CheckCircle2, Clock, AlertCircle, RefreshCw } from 'lucide-react';
+import { Plus, Search, Filter, Pencil, Trash2, User as UserIcon, X, Activity, FileText, Thermometer, Syringe, Stethoscope, Clipboard, CheckCircle2, Clock, AlertCircle, RefreshCw } from 'lucide-react';
 import { User, UserRole, NurseOrder, NurseOrderType } from '../types';
 import { AUTH_STORAGE_KEY, updatePatient, deletePatient, listNurseOrders, updateNurseOrderStatus, createNurseOrder } from '../services/api';
 import { useData } from '../contexts/DataContext';
